@@ -272,6 +272,9 @@ class _ShareMHomePageState extends State<ShareMHomePage> {
 
   Future<void> _sendTo(NearbyDevice peer) async {
     try {
+      // Verify an advertised device with the actual ShareM endpoint before
+      // opening the picker or sending any data.
+      await service.addManualPeer(peer.endpoint, expectedId: peer.id);
       final files = _selectedFiles.isNotEmpty
         ? List<PlatformFile>.of(_selectedFiles)
         : await FilePicker.pickFiles();

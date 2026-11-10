@@ -341,7 +341,8 @@ class LanTransferService extends ChangeNotifier {
       entry.status = TransferStatus.completed;
       entry.doneBytes = entry.totalBytes;
     } catch (e) {
-      entry.status = entry.cancellationRequested ? TransferStatus.cancelled : TransferStatus.failed;
+      entry.status = entry.cancellationRequested || e is TransferCancelledException
+        ? TransferStatus.cancelled : TransferStatus.failed;
       entry.error = e.toString();
     } finally {
       _uploads.remove(entry.id);
@@ -457,6 +458,10 @@ class LanTransferService extends ChangeNotifier {
           route[0] == 'v1' && route[1] == 'files') {
         final offer = _offers[route[2]];
         final index = int.tryParse(route[3]);
+        if (offer != null && offer.status == 'cancelled') {
+          _reply(req, 410, {'error': 'Cancelled'});
+          return;
+        }
         if (offer == null || index == null || index < 0 ||
             index >= offer.files.length || offer.status != 'accepted' ||
             index != offer.nextIndex || _receivingOffers.contains(offer.id) ||
@@ -540,6 +545,9 @@ class LanTransferService extends ChangeNotifier {
 
   Future<Map<String, dynamic>> _decode(HttpClientResponse response) async {
     final body = await utf8.decoder.bind(response).join();
+    if (response.statusCode == 410) {
+      throw const TransferCancelledException();
+    }
     if (response.statusCode != 200) {
       throw HttpException('Peer responded ' + response.statusCode.toString() + ': ' + body);
     }
