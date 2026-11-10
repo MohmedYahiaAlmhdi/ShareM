@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import '../core/lan_transfer_service.dart';
 import '../core/transfer_models.dart';
 import '../core/wifi_direct_service.dart';
+import '../core/update_service.dart';
+import 'update_card.dart';
 import 'pairing_page.dart';
 import 'sharem_theme.dart';
 
@@ -21,6 +23,7 @@ class _ShareMHomePageState extends State<ShareMHomePage> {
   int _page = 0;
   String? _shownOffer;
   final WifiDirectService wifiDirect = WifiDirectService();
+  final UpdateService updates = UpdateService();
   String? _connectedDirectIp;
 
   LanTransferService get service => widget.service;
@@ -33,6 +36,7 @@ class _ShareMHomePageState extends State<ShareMHomePage> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       service.start();
       wifiDirect.initialize();
+      unawaited(updates.check());
     });
   }
 
@@ -41,6 +45,7 @@ class _ShareMHomePageState extends State<ShareMHomePage> {
     service.removeListener(_onChange);
     wifiDirect.removeListener(_onDirectChange);
     wifiDirect.dispose();
+    updates.dispose();
     super.dispose();
   }
 
@@ -677,6 +682,8 @@ class _ShareMHomePageState extends State<ShareMHomePage> {
     padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 27),
     child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       _pageHeader('الجهاز والاستقبال', 'معلومات الاتصال وإعدادات ShareM'),
+      UpdateCard(updates: updates),
+      const SizedBox(height: 18),
       FilledButton.icon(
         onPressed: () => setState(() => _page = 3),
         icon: const Icon(Icons.qr_code_rounded),

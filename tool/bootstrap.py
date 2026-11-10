@@ -29,6 +29,7 @@ for permission in (
     "android.permission.NEARBY_WIFI_DEVICES",
     "android.permission.ACCESS_FINE_LOCATION",
     "android.permission.CAMERA",
+    "android.permission.REQUEST_INSTALL_PACKAGES",
 ):
     if not any(x.attrib.get(f"{{{ns}}}name") == permission
                for x in root.findall("uses-permission")):
@@ -50,11 +51,68 @@ application = root.find("application")
 if application is not None:
     application.set(f"{{{ns}}}usesCleartextTraffic", "true")
     application.set(f"{{{ns}}}label", "ShareM")
+    if not any(item.attrib.get(f"{{{ns}}}authorities") ==
+               "com.yahia.sharem.sharefiles"
+               for item in application.findall("provider")):
+        provider = ET.SubElement(application, "provider")
+        provider.set(f"{{{ns}}}name", "androidx.core.content.FileProvider")
+        provider.set(f"{{{ns}}}authorities", "com.yahia.sharem.sharefiles")
+        provider.set(f"{{{ns}}}exported", "false")
+        provider.set(f"{{{ns}}}grantUriPermissions", "true")
+        metadata = ET.SubElement(provider, "meta-data")
+        metadata.set(f"{{{ns}}}name", "android.support.FILE_PROVIDER_PATHS")
+        metadata.set(f"{{{ns}}}resource", "@xml/sharem_file_paths")
 tree.write(android, encoding="utf-8", xml_declaration=True)
 native_source = ROOT / "native/android/MainActivity.kt"
 native_target = ROOT / "android/app/src/main/kotlin/com/yahia/sharem/MainActivity.kt"
 native_target.parent.mkdir(parents=True, exist_ok=True)
 shutil.copy2(native_source, native_target)
+update_paths = ROOT / "android/app/src/main/res/xml/sharem_file_paths.xml"
+update_paths.parent.mkdir(parents=True, exist_ok=True)
+update_paths.write_text(
+    '<?xml version="1.0" encoding="utf-8"?>\n'
+    '<paths xmlns:android="http://schemas.android.com/apk/res/android">\n'
+    '  <cache-path name="sharem_updates" path="sharem_updates/" />\n'
+    '</paths>\n',
+    encoding="utf-8",
+)
+
+# Never ship a release signed by a transient CI debug key.
+# android/key.properties is created only from private GitHub Actions secrets.
+gradle_path = ROOT / "android/app/build.gradle.kts"
+if gradle_path.exists():
+    gradle = gradle_path.read_text(encoding="utf-8")
+    if "sharemKeyPropertiesFile" not in gradle:
+        signing = (
+            'val sharemKeyPropertiesFile = rootProject.file("key.properties")\n'
+            'val sharemKeyProperties = java.util.Properties().apply {\n'
+            '  if (sharemKeyPropertiesFile.exists()) {\n'
+            '    load(java.io.FileInputStream(sharemKeyPropertiesFile))\n'
+            '  }\n'
+            '}\n\n'
+        )
+        gradle = signing + gradle
+        gradle = gradle.replace(
+            "android {",
+            'android {\n'
+            '  signingConfigs {\n'
+            '    create("sharemRelease") {\n'
+            '      if (sharemKeyPropertiesFile.exists()) {\n'
+            '        keyAlias = sharemKeyProperties["keyAlias"] as String\n'
+            '        keyPassword = sharemKeyProperties["keyPassword"] as String\n'
+            '        storePassword = sharemKeyProperties["storePassword"] as String\n'
+            '        storeFile = file(sharemKeyProperties["storeFile"] as String)\n'
+            '      }\n'
+            '    }\n'
+            '  }\n',
+            1,
+        )
+        gradle = gradle.replace(
+            'signingConfig = signingConfigs.getByName("debug")',
+            'signingConfig = if (sharemKeyPropertiesFile.exists()) '
+            'signingConfigs.getByName("sharemRelease") else null',
+        )
+        gradle_path.write_text(gradle, encoding="utf-8")
 
 ios = ROOT / "ios/Runner/Info.plist"
 if ios.exists():
