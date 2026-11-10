@@ -5,8 +5,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sharem/src/core/lan_transfer_service.dart';
 
+class _RealNetworkTestBinding extends AutomatedTestWidgetsFlutterBinding {
+  @override
+  bool get overrideHttpClient => false;
+}
+
 void main() {
-  TestWidgetsFlutterBinding.ensureInitialized();
+  _RealNetworkTestBinding();
 
   late LanTransferService service;
   late HttpClient client;
