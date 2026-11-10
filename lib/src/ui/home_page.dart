@@ -496,7 +496,9 @@ class _ShareMHomePageState extends State<ShareMHomePage> {
     running: service.running,
     peers: service.peers,
     history: service.history,
-    error: service.startupError,
+    error: wifiDirect.canScan && !wifiDirect.enabled
+        ? 'فعّل Wi-Fi على الهاتف حتى تظهر الأجهزة القريبة.'
+        : (wifiDirect.error ?? service.startupError),
     onSend: _pickCategory,
     onReceive: () => _openPairing(receive: true),
     onPair: _openPairing,
