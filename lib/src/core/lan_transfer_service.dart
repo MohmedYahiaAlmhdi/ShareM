@@ -12,6 +12,8 @@ import 'transfer_models.dart';
 /// Direct LAN file transfer. HTTP transport is NOT encrypted in v0.1.
 class LanTransferService extends ChangeNotifier {
   static const discoveryPort = 43886;
+  /// Predictable owner endpoint for Android Wi-Fi Direct group clients.
+  static const transferPort = 43887;
   final deviceId = randomHex();
   final peers = <NearbyDevice>[];
   final history = <TransferEntry>[];
@@ -54,13 +56,14 @@ class LanTransferService extends ChangeNotifier {
           history.add(item);
         }
       }
-      final networks = await NetworkInterface.list(type: InternetAddressType.IPv4, includeLoopback: false);
-      for (final address in networks.expand((e) => e.addresses)) {
-        if (!address.address.startsWith('169.254.')) {
-          localAddress = address.address; break;
-        }
+      await refreshLocalAddress();
+      try {
+        _server = await HttpServer.bind(InternetAddress.anyIPv4, transferPort);
+      } on SocketException {
+        // A port collision allows LAN QR with the chosen ephemeral port,
+        // but Wi-Fi Direct automatic owner connection needs transferPort.
+        _server = await HttpServer.bind(InternetAddress.anyIPv4, 0);
       }
-      _server = await HttpServer.bind(InternetAddress.anyIPv4, 0);
       port = _server!.port;
       _server!.listen(_handle, onError: (Object e) { startupError = e.toString(); changed(); });
       running = true;
@@ -101,6 +104,24 @@ class LanTransferService extends ChangeNotifier {
     }
   }
 
+  Future<void> refreshLocalAddress() async {
+    try {
+      final networks = await NetworkInterface.list(
+        type: InternetAddressType.IPv4, includeLoopback: false,
+      );
+      final addresses = networks.expand((e) => e.addresses)
+          .map((a) => a.address)
+          .where((a) => !a.startsWith('169.254.'))
+          .toList();
+      if (addresses.isEmpty) return;
+      // Prefer the Wi-Fi Direct subnet while a P2P group is active.
+      localAddress = addresses.firstWhere(
+        (a) => a.startsWith('192.168.49.'), orElse: () => addresses.first,
+      );
+      changed();
+    } catch (_) {}
+  }
+
   Future<void> rename(String value) async {
     final name = value.trim();
     if (name.isEmpty || name.length > 36) throw const FormatException('Name must be 1–36 characters');
@@ -128,7 +149,7 @@ class LanTransferService extends ChangeNotifier {
     ..connectionTimeout = const Duration(seconds: 10)
     ..idleTimeout = const Duration(seconds: 30);
 
-  Future<void> addManualPeer(String hostAndPort) async {
+  Future<void> addManualPeer(String hostAndPort, {String? expectedId}) async {
     final uri = Uri.tryParse('http://' + hostAndPort.trim());
     if (uri == null || uri.host.isEmpty || !uri.hasPort ||
         uri.port < 1 || uri.port > 65535) {
@@ -143,6 +164,9 @@ class LanTransferService extends ChangeNotifier {
         throw const FormatException('Device is not running ShareM');
       }
       if (json['id'] == deviceId) throw StateError('This device cannot connect to itself');
+      if (expectedId != null && json['id'] != expectedId) {
+        throw StateError('The responder is not the device advertised by this QR code');
+      }
       _upsert(NearbyDevice(id: json['id'] as String, name: json['name'] as String,
         host: uri.host, port: uri.port));
     } finally { client.close(force: true); }

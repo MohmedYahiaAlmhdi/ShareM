@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pathlib
 import plistlib
+import shutil
 import subprocess
 import xml.etree.ElementTree as ET
 
@@ -22,21 +23,45 @@ for permission in (
     "android.permission.INTERNET",
     "android.permission.ACCESS_NETWORK_STATE",
     "android.permission.CHANGE_WIFI_MULTICAST_STATE",
+    "android.permission.ACCESS_WIFI_STATE",
+    "android.permission.CHANGE_WIFI_STATE",
+    "android.permission.CHANGE_NETWORK_STATE",
+    "android.permission.NEARBY_WIFI_DEVICES",
+    "android.permission.ACCESS_FINE_LOCATION",
+    "android.permission.CAMERA",
 ):
     if not any(x.attrib.get(f"{{{ns}}}name") == permission
                for x in root.findall("uses-permission")):
         element = ET.Element("uses-permission")
         element.set(f"{{{ns}}}name", permission)
+        if permission == "android.permission.NEARBY_WIFI_DEVICES":
+            element.set(f"{{{ns}}}usesPermissionFlags", "neverForLocation")
+        if permission == "android.permission.ACCESS_FINE_LOCATION":
+            element.set(f"{{{ns}}}maxSdkVersion", "32")
         root.insert(0, element)
+if not any(element.attrib.get(f"{{{ns}}}name") == "android.hardware.wifi.direct"
+           for element in root.findall("uses-feature")):
+    feature = ET.Element("uses-feature")
+    feature.set(f"{{{ns}}}name", "android.hardware.wifi.direct")
+    feature.set(f"{{{ns}}}required", "false")
+    root.insert(0, feature)
+
 application = root.find("application")
 if application is not None:
     application.set(f"{{{ns}}}usesCleartextTraffic", "true")
 tree.write(android, encoding="utf-8", xml_declaration=True)
+native_source = ROOT / "native/android/MainActivity.kt"
+native_target = ROOT / "android/app/src/main/kotlin/com/yahia/sharem/MainActivity.kt"
+native_target.parent.mkdir(parents=True, exist_ok=True)
+shutil.copy2(native_source, native_target)
 
 ios = ROOT / "ios/Runner/Info.plist"
 if ios.exists():
     with ios.open("rb") as handle:
         data = plistlib.load(handle)
+    data["NSCameraUsageDescription"] = (
+        "ShareM scans a QR code to pair with a nearby device."
+    )
     data["NSLocalNetworkUsageDescription"] = (
         "ShareM discovers nearby devices and transfers files on your local network."
     )
@@ -53,6 +78,7 @@ for name in ("DebugProfile.entitlements", "Release.entitlements"):
             data = plistlib.load(handle)
         data["com.apple.security.network.client"] = True
         data["com.apple.security.network.server"] = True
+        data["com.apple.security.device.camera"] = True
         with file.open("wb") as handle:
             plistlib.dump(data, handle)
 generated_test = ROOT / "test/widget_test.dart"

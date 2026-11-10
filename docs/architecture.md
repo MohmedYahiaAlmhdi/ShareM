@@ -22,3 +22,14 @@ HTTP payloads and session tokens are NOT encrypted in v0.1. A malicious or compr
 - iOS requires local network privacy permission.
 - Android local HTTP cleartext permission is added by bootstrap.
 - iOS Network framework, Android Wi-Fi Direct and BLE support remain future work.
+
+
+## QR and Android Wi-Fi Direct (prototype)
+
+- QR payload scheme: sharem://pair?v=1&id=<32 hex>&name=<name>&ip=<private IPv4>&port=<port>. Validate private IPv4 and protocol before connecting; confirm deviceId against GET /v1/hello. QRs are NOT secrets or trust credentials.
+- Android native bridge: MethodChannel sharem/wifi_direct and EventChannel sharem/wifi_direct/events. WifiP2pManager handles discovery/negotiation; Dart TCP transfers begin only after group formation.
+- Android 13+ requires NEARBY_WIFI_DEVICES runtime permission; Android 12 and earlier require location permission for P2P discovery; location mode may be required even on newer devices. Feature is optional on devices.
+- A group owner listens on TCP 43887. A client dials groupOwnerAddress:43887; if 43887 is taken and the app binds an ephemeral port instead, Wi-Fi Direct automatic dialing cannot succeed. Provide a manual/QR fallback when possible.
+- QR camera scanning is available on Android, iOS and macOS only with mobile_scanner; Windows/Linux accept pasted payload.
+- Using Wi-Fi Direct does not imply end-to-end encryption. The current HTTP transport remains plain text, and source-IP + bearer token is not sufficient against attackers on the LAN.
+- Device-specific vendor bugs, permissions and firewall rules need hands-on tests on at least two Android phones before claiming Wi-Fi Direct production support.
