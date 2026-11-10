@@ -28,8 +28,17 @@ class LanTransferService extends ChangeNotifier {
   int port = 0;
   bool running = false;
   bool _disposed = false;
+  DateTime _lastProgressUpdate = DateTime.fromMillisecondsSinceEpoch(0);
 
   void changed() { if (!_disposed) notifyListeners(); }
+
+  void _progressChanged() {
+    final now = DateTime.now();
+    if (now.difference(_lastProgressUpdate).inMilliseconds >= 90) {
+      _lastProgressUpdate = now;
+      changed();
+    }
+  }
 
   Future<void> start() async {
     if (running) return;
@@ -167,6 +176,7 @@ class LanTransferService extends ChangeNotifier {
         final digest = await sha256.bind(file.readAsByteStream()).first;
         manifest.add(FileManifest(name: safeFileName(file.name), size: length, sha256: digest.toString()));
       }
+      _check(entry);
       entry.totalBytes = manifest.fold<int>(0, (sum, file) => sum + file.size);
       entry.status = TransferStatus.waiting; changed();
       final offer = await _post(client, peer, '/v1/offer', {'sender': deviceName,
@@ -197,7 +207,7 @@ class LanTransferService extends ChangeNotifier {
         req.headers.set('X-ShareM-Token', token);
         req.contentLength = manifest[i].size;
         await req.addStream(files[i].readAsByteStream().map((chunk) {
-          _check(entry); entry.doneBytes += chunk.length; changed(); return chunk;
+          _check(entry); entry.doneBytes += chunk.length; _progressChanged(); return chunk;
         }));
         final reply = await req.close();
         _uploads.remove(entry.id);
@@ -310,7 +320,7 @@ class LanTransferService extends ChangeNotifier {
       await for (final chunk in req) {
         received += chunk.length;
         if (received > metadata.size) throw const FormatException('Oversized upload');
-        sink.add(chunk); entry.doneBytes += chunk.length; changed();
+        sink.add(chunk); entry.doneBytes += chunk.length; _progressChanged();
       }
       await sink.flush(); await sink.close();
       if (received != metadata.size) throw const FormatException('Incomplete upload');
