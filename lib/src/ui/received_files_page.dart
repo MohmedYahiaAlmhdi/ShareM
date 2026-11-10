@@ -10,8 +10,7 @@ import 'sharem_theme.dart';
 
 bool isUserReceivedFile(String name) =>
     name.isNotEmpty &&
-    !name.startsWith('.sharem-') &&
-    !name.endsWith('.part');
+    !(name.startsWith('.sharem-') && name.endsWith('.part'));
 
 class ReceivedFilesPage extends StatefulWidget {
   const ReceivedFilesPage({super.key});
