@@ -73,6 +73,29 @@ if ios.exists():
     with ios.open("wb") as handle:
         plistlib.dump(data, handle)
 
+macos_info = ROOT / "macos/Runner/Info.plist"
+if macos_info.exists():
+    with macos_info.open("rb") as handle:
+        macos_data = plistlib.load(handle)
+    macos_data["NSCameraUsageDescription"] = (
+        "ShareM uses the camera only to scan device pairing QR codes."
+    )
+    macos_data["CFBundleDisplayName"] = "ShareM"
+    with macos_info.open("wb") as handle:
+        plistlib.dump(macos_data, handle)
+
+windows_main = ROOT / "windows/runner/main.cpp"
+if windows_main.exists():
+    window_source = windows_main.read_text(encoding="utf-8")
+    window_source = window_source.replace('L"sharem"', 'L"ShareM"')
+    windows_main.write_text(window_source, encoding="utf-8")
+
+linux_app = ROOT / "linux/runner/my_application.cc"
+if linux_app.exists():
+    linux_source = linux_app.read_text(encoding="utf-8")
+    linux_source = linux_source.replace('"sharem"', '"ShareM"')
+    linux_app.write_text(linux_source, encoding="utf-8")
+
 for name in ("DebugProfile.entitlements", "Release.entitlements"):
     file = ROOT / "macos/Runner" / name
     if file.exists():
