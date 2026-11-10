@@ -425,9 +425,9 @@ class LanTransferService extends ChangeNotifier {
       if (req.method == 'POST' && route.length == 3 &&
           route[0] == 'v1' && route[1] == 'cancel') {
         final offer = _offers[route[2]];
-        if (offer == null || offer.cancelToken == null ||
-            !_sameSender(req, offer) ||
-            req.headers.value('X-ShareM-Cancel') != offer.cancelToken) {
+        if (offer == null || !canCancelOffer(
+              offer, req.connectionInfo?.remoteAddress.address,
+              req.headers.value('X-ShareM-Cancel'))) {
           _reply(req, 403, {'error': 'Cancellation not authorized'});
           return;
         }

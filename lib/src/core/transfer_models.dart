@@ -160,6 +160,12 @@ class IncomingOffer {
   int get totalBytes => files.fold(0, (sum, f) => sum + f.size);
 }
 
+/// Remote cancellation requires a per-offer secret and the original sender IP.
+bool canCancelOffer(IncomingOffer offer, String? sourceIp, String? secret) =>
+    offer.cancelToken != null &&
+    sourceIp == offer.sourceIp &&
+    secret == offer.cancelToken;
+
 String safeFileName(String original) {
   final leaf = original.split(RegExp(r'[/\\]')).last;
   var result = leaf.replaceAll(RegExp(r'[\x00-\x1F<>:"|?*]'), '_').trim();
