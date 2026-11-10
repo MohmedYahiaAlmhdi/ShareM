@@ -85,13 +85,15 @@ if gradle_path.exists():
     if "sharemKeyPropertiesFile" not in gradle:
         signing = (
             'val sharemKeyPropertiesFile = rootProject.file("key.properties")\n'
-            'val sharemKeyProperties = java.util.Properties().apply {\n'
+            'val sharemKeyProperties = Properties().apply {\n'
             '  if (sharemKeyPropertiesFile.exists()) {\n'
-            '    load(java.io.FileInputStream(sharemKeyPropertiesFile))\n'
+            '    load(FileInputStream(sharemKeyPropertiesFile))\n'
             '  }\n'
             '}\n\n'
         )
         # Kotlin Gradle's plugins{} block must precede top-level declarations.
+        gradle = ('import java.util.Properties\n'
+                  'import java.io.FileInputStream\n' + gradle)
         gradle = gradle.replace("android {", signing + "android {", 1)
         gradle = gradle.replace(
             "android {",
