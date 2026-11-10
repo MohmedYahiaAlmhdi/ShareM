@@ -1,15 +1,21 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../core/transfer_models.dart';
+import '../core/wifi_direct_service.dart';
 import 'sharem_theme.dart';
 
 /// A visual discovery map. Positions do not represent physical distances.
 class NearbyRadar extends StatefulWidget {
   const NearbyRadar({super.key, required this.peers,
-    required this.deviceName, required this.onTap});
+    required this.deviceName, required this.onTap,
+    this.directPeers = const <WifiDirectPeer>[], this.onDirectTap,
+    this.busy = false});
   final List<NearbyDevice> peers;
   final String deviceName;
   final ValueChanged<NearbyDevice> onTap;
+  final List<WifiDirectPeer> directPeers;
+  final ValueChanged<WifiDirectPeer>? onDirectTap;
+  final bool busy;
   @override
   State<NearbyRadar> createState() => _NearbyRadarState();
 }
@@ -63,9 +69,47 @@ class _NearbyRadarState extends State<NearbyRadar>
           ),
           for (var i = 0; i < widget.peers.length && i < 8; i++)
             _device(widget.peers[i], i, side),
+          for (var i = 0; i < widget.directPeers.length &&
+              i < (8 - widget.peers.length).clamp(0, 8); i++)
+            _directDevice(widget.directPeers[i],
+              i + widget.peers.length, side),
+          if (widget.busy)
+            Positioned(top: 0, right: 0, child: SizedBox(
+              width: 20, height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2,
+                color: ShareMTheme.teal))),
         ]),
       ));
     });
+  }
+
+  Widget _directDevice(WifiDirectPeer peer, int index, double side) {
+    final radians = index * 2.39996 - math.pi / 2;
+    final radius = (index.isEven ? .34 : .43) * side;
+    return Positioned(
+      left: side / 2 + math.cos(radians) * radius - 23,
+      top: side / 2 + math.sin(radians) * radius - 23,
+      child: Tooltip(
+        message: 'Wi-Fi Direct: ' + peer.name,
+        child: Material(
+          color: const Color(0xFFE8F5FF),
+          elevation: 2,
+          shape: const CircleBorder(),
+          child: InkWell(
+            key: Key('direct-peer-' + peer.address),
+            onTap: widget.onDirectTap == null ? null :
+                () => widget.onDirectTap!(peer),
+            customBorder: const CircleBorder(),
+            child: Semantics(
+              button: true, label: 'الاتصال مباشرة مع ' + peer.name,
+              child: const SizedBox(width: 46, height: 46,
+                child: Icon(Icons.wifi_tethering_rounded,
+                  color: Color(0xFF2794C4), size: 23)),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _device(NearbyDevice peer, int index, double side) {

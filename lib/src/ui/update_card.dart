@@ -16,6 +16,7 @@ class UpdateCard extends StatelessWidget {
         UpdatePhase.idle => 'اضغط للتحقق من إصدار جديد',
         UpdatePhase.checking => 'جارٍ فحص تحديثات GitHub…',
         UpdatePhase.current => 'هذا هو أحدث إصدار منشور',
+        UpdatePhase.unpublished => 'لم يُنشر إصدار تحديثات بعد. يمكنك استخدام التطبيق بشكل طبيعي.',
         UpdatePhase.available => 'يتوفر إصدار جديد من ShareM',
         UpdatePhase.downloading => 'جارٍ تنزيل التحديث…',
         UpdatePhase.ready => 'اكتمل التنزيل، جاهز للتثبيت',
@@ -64,6 +65,12 @@ class UpdateCard extends StatelessWidget {
             Text((updates.progress * 100).toStringAsFixed(0) + '%',
               textDirection: TextDirection.ltr),
           ],
+          if (phase == UpdatePhase.unpublished)
+            const Padding(
+              padding: EdgeInsets.only(top: 10),
+              child: Text('سيظهر التحديث هنا عندما ننشر إصدارًا رسميًا على GitHub. لا تحتاج إلى إعادة تثبيت التطبيق الآن.',
+                style: TextStyle(fontSize: 12, color: ShareMTheme.teal)),
+            ),
           if (updates.message != null)
             Padding(padding: const EdgeInsets.only(top: 10),
               child: Text(updates.message!,
