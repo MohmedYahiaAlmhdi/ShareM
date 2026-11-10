@@ -35,6 +35,16 @@ jobs:
           path: build/app/outputs/flutter-apk/*release.apk
           retention-days: 7
           if-no-files-found: error
+      - name: Preserve Android apksigner for offline signature verification
+        shell: bash
+        run: |
+          cp "$(find "$ANDROID_HOME/build-tools" -type f -name apksigner.jar | sort -V | tail -n 1)" ./apksigner.jar
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Android-apksigner-cli
+          path: apksigner.jar
+          if-no-files-found: error
+          retention-days: 7
       - uses: actions/upload-artifact@v4
         with:
           name: ShareM-android-debug
