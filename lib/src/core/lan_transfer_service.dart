@@ -414,7 +414,10 @@ class LanTransferService extends ChangeNotifier {
         final sender = body['sender'] is String ? body['sender'] as String : 'Nearby device';
         final rawCancelToken = body['cancelToken'];
         if (rawCancelToken != null && (rawCancelToken is! String ||
-            !RegExp(r'^[a-f0-9]{48}
+            rawCancelToken.length != 48 ||
+            RegExp(r'[^a-f0-9]').hasMatch(rawCancelToken))) {
+          throw const FormatException('Invalid cancellation token');
+        }
         final offer = IncomingOffer(id: randomHex(24),
           peerName: sender.length > 36 ? sender.substring(0, 36) : sender,
           sourceIp: req.connectionInfo?.remoteAddress.address ?? '',
