@@ -9,8 +9,9 @@ import 'package:sharem/src/core/verified_file_writer.dart';
 
 void main() {
   late Directory folder;
-  setUp(() async => folder =
-    await Directory.systemTemp.createTemp('sharem-writer-test-'));
+  setUp(() async {
+    folder = await Directory.systemTemp.createTemp('sharem-writer-test-');
+  });
   tearDown(() async {
     if (await folder.exists()) await folder.delete(recursive: true);
   });
