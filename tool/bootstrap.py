@@ -55,4 +55,7 @@ for name in ("DebugProfile.entitlements", "Release.entitlements"):
         data["com.apple.security.network.server"] = True
         with file.open("wb") as handle:
             plistlib.dump(data, handle)
+generated_test = ROOT / "test/widget_test.dart"
+if generated_test.exists():
+    generated_test.unlink()
 print("Platform scaffolding ready.")
