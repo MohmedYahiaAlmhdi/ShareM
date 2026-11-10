@@ -12,11 +12,10 @@ import 'sharem_theme.dart';
 
 class PairingPage extends StatefulWidget {
   const PairingPage({super.key, required this.service,
-    required this.wifiDirect, required this.onManualConnect,
+    required this.wifiDirect,
     this.autoShowQr = false});
   final LanTransferService service;
   final WifiDirectService wifiDirect;
-  final VoidCallback onManualConnect;
   final bool autoShowQr;
 
   @override
@@ -69,7 +68,7 @@ class _PairingPageState extends State<PairingPage> {
             Text(peer.name, textAlign: TextAlign.center,
               style: const TextStyle(fontWeight: FontWeight.bold)),
             const SizedBox(height: 6),
-            SelectableText(peer.endpoint, textDirection: TextDirection.ltr),
+            const Text('امسح هذا الرمز من الجهاز الآخر للاتصال مباشرة.'),
             const SizedBox(height: 9),
             const Text('يعمل الرمز على شبكة محلية مشتركة، أو بعد إنشاء اتصال Wi‑Fi Direct.',
               textAlign: TextAlign.center, style: TextStyle(fontSize: 12)),
@@ -217,7 +216,7 @@ class _PairingPageState extends State<PairingPage> {
                   : 'متصل مباشرة بجهاز آخر'),
                 subtitle: Text(wifi.ownerIp == null
                   ? 'جارٍ الحصول على عنوان المجموعة'
-                  : 'عنوان المضيف: ' + wifi.ownerIp!),
+                  : 'تم إنشاء اتصال مباشر بين الجهازين'),
                 trailing: IconButton(
                   tooltip: 'إنهاء اتصال Wi‑Fi Direct',
                   icon: const Icon(Icons.link_off_rounded),
@@ -235,8 +234,7 @@ class _PairingPageState extends State<PairingPage> {
                   leading: const CircleAvatar(
                     child: Icon(Icons.phone_android_rounded)),
                   title: Text(peer.name),
-                  subtitle: Text(peer.address,
-                    textDirection: TextDirection.ltr),
+                  subtitle: const Text('Wi-Fi Direct • اضغط للاتصال'),
                   trailing: FilledButton(
                     onPressed: wifi.busy || wifi.connected
                       ? null : () => wifi.connect(peer.address),
@@ -245,12 +243,7 @@ class _PairingPageState extends State<PairingPage> {
                 )),
           ],
           const SizedBox(height: 24),
-          OutlinedButton.icon(
-            onPressed: widget.onManualConnect,
-            icon: const Icon(Icons.add_link_rounded),
-            label: const Text('الاتصال بعنوان IP يدويًا'),
-          ),
-          const SizedBox(height: 16),
+
           const Text('ملاحظة: QR يعرّف بالجهاز ويختصر كتابة عنوانه. '
             'لا يثبت هوية شخص موثوق، ولا يشفّر نقل الملفات في هذا الإصدار.',
             textAlign: TextAlign.center,
