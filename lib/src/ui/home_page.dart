@@ -10,6 +10,7 @@ import '../core/update_service.dart';
 import 'update_card.dart';
 import 'pairing_page.dart';
 import 'sharem_theme.dart';
+import 'premium_dashboard.dart';
 
 class ShareMHomePage extends StatefulWidget {
   const ShareMHomePage({super.key, required this.service});
@@ -25,6 +26,10 @@ class _ShareMHomePageState extends State<ShareMHomePage> {
   final WifiDirectService wifiDirect = WifiDirectService();
   final UpdateService updates = UpdateService();
   String? _connectedDirectIp;
+  List<PlatformFile> _selectedFiles = [];
+  bool _showingDevicePicker = false;
+  bool _autoShowReceiveQr = false;
+  int _lastAutoPickerPeerCount = 0;
 
   LanTransferService get service => widget.service;
 
@@ -90,6 +95,14 @@ class _ShareMHomePageState extends State<ShareMHomePage> {
   void _onChange() {
     if (!mounted) return;
     setState(() {});
+    if (_selectedFiles.isNotEmpty &&
+        service.peers.length > _lastAutoPickerPeerCount &&
+        _page == 3 && !_showingDevicePicker) {
+      _lastAutoPickerPeerCount = service.peers.length;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && !_showingDevicePicker) _chooseDevice();
+      });
+    }
     final offer = service.incomingOffer;
     if (offer != null && offer.status == 'pending' &&
         _shownOffer != offer.id) {
@@ -221,12 +234,47 @@ class _ShareMHomePageState extends State<ShareMHomePage> {
     }
   }
 
+  Future<void> _pickCategory(ShareCategory category) async {
+    try {
+      final type = switch (category) {
+        ShareCategory.images => FileType.image,
+        ShareCategory.videos => FileType.video,
+        ShareCategory.audio => FileType.audio,
+        ShareCategory.documents => FileType.custom,
+        ShareCategory.apk => FileType.custom,
+        ShareCategory.all => FileType.any,
+      };
+      final extensions = switch (category) {
+        ShareCategory.documents => <String>[
+          'pdf', 'doc', 'docx', 'txt', 'xls', 'xlsx', 'ppt',
+          'pptx', 'csv', 'zip', 'json', 'odt', 'rtf', 'epub'],
+        ShareCategory.apk => <String>['apk'],
+        _ => null,
+      };
+      final files = await FilePicker.pickFiles(
+        type: type, allowedExtensions: extensions);
+      if (files.isEmpty || !mounted) return;
+      setState(() {
+        _selectedFiles = files;
+        _lastAutoPickerPeerCount = service.peers.length;
+      });
+      await _chooseDevice();
+    } catch (e) {
+      if (mounted) _message('تعذر اختيار الملفات: ' + e.toString());
+    }
+  }
+
   Future<void> _sendTo(NearbyDevice peer) async {
     try {
-      final files = await FilePicker.pickFiles();
+      final files = _selectedFiles.isNotEmpty
+        ? List<PlatformFile>.of(_selectedFiles)
+        : await FilePicker.pickFiles();
       if (files.isEmpty || !mounted) return;
-      setState(() => _page = 1);
-      _message('جارٍ تجهيز الملفات لإرسالها إلى ' + peer.name);
+      setState(() {
+        _selectedFiles = [];
+        _page = 1;
+      });
+      _message('جارٍ تجهيز الملفات للإرسال إلى ' + peer.name);
       unawaited(service.sendFiles(peer, files));
     } catch (e) {
       if (mounted) _message('تعذر اختيار الملفات: ' + e.toString());
@@ -234,44 +282,86 @@ class _ShareMHomePageState extends State<ShareMHomePage> {
   }
 
   Future<void> _chooseDevice() async {
-    if (service.peers.isEmpty) {
-      await _manualConnect();
-      return;
-    }
-    await showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (ctx) => SafeArea(child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Text('اختر الجهاز المستقبِل',
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
-          const SizedBox(height: 12),
-          for (final peer in service.peers)
-            ListTile(
-              leading: const CircleAvatar(
-                child: Icon(Icons.devices_rounded)),
-              title: Text(peer.name),
-              subtitle: Text(peer.endpoint,
-                textDirection: TextDirection.ltr),
-              trailing: const Icon(Icons.arrow_back_ios_new_rounded, size: 16),
-              onTap: () {
-                Navigator.pop(ctx);
-                _sendTo(peer);
-              },
-            ),
-          TextButton.icon(
-            onPressed: () {
-              Navigator.pop(ctx);
-              _manualConnect();
-            },
-            icon: const Icon(Icons.add_link),
-            label: const Text('إضافة جهاز بعنوان IP'),
+    if (_showingDevicePicker || !mounted) return;
+    _showingDevicePicker = true;
+    try {
+      await showModalBottomSheet<void>(
+        context: context,
+        showDragHandle: true,
+        isScrollControlled: true,
+        builder: (ctx) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 25),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              Text(_selectedFiles.isNotEmpty
+                  ? 'اختر جهازًا لإرسال ' +
+                    _selectedFiles.length.toString() + ' ملف'
+                  : 'اختر الجهاز المستقبِل',
+                style: const TextStyle(
+                  fontSize: 20, fontWeight: FontWeight.w900)),
+              const SizedBox(height: 16),
+              if (service.peers.isEmpty) ...[
+                const Icon(Icons.wifi_tethering_rounded,
+                  size: 55, color: ShareMTheme.teal),
+                const SizedBox(height: 11),
+                const Text('لا توجد أجهزة متصلة بعد',
+                  style: TextStyle(fontWeight: FontWeight.w800)),
+                const SizedBox(height: 5),
+                const Text('امسح رمز QR أو استخدم Wi-Fi Direct، ثم اختر الجهاز.',
+                  textAlign: TextAlign.center),
+              ] else
+                Flexible(
+                  child: ListView(
+                    shrinkWrap: true,
+                    children: [
+                      for (final peer in service.peers)
+                        Card(child: ListTile(
+                          leading: const CircleAvatar(
+                            child: Icon(Icons.phone_android_rounded)),
+                          title: Text(peer.name),
+                          subtitle: Text(peer.endpoint,
+                            textDirection: TextDirection.ltr),
+                          trailing: const Icon(Icons.arrow_back_ios_new_rounded),
+                          onTap: () {
+                            Navigator.pop(ctx);
+                            _sendTo(peer);
+                          },
+                        )),
+                    ],
+                  ),
+                ),
+              const SizedBox(height: 11),
+              FilledButton.icon(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  setState(() {
+                    _autoShowReceiveQr = false;
+                    _page = 3;
+                  });
+                },
+                icon: const Icon(Icons.qr_code_scanner_rounded),
+                label: const Text('QR أو Wi-Fi Direct')),
+              TextButton.icon(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  _manualConnect();
+                },
+                icon: const Icon(Icons.add_link_rounded),
+                label: const Text('اتصال يدوي')),
+              if (_selectedFiles.isNotEmpty)
+                TextButton(
+                  onPressed: () {
+                    setState(() => _selectedFiles = []);
+                    Navigator.pop(ctx);
+                  },
+                  child: const Text('إلغاء اختيار الملفات')),
+            ]),
           ),
-        ]),
-      )),
-    );
+        ),
+      );
+    } finally {
+      _showingDevicePicker = false;
+    }
   }
 
   void _message(String text) {
@@ -298,6 +388,7 @@ class _ShareMHomePageState extends State<ShareMHomePage> {
                   : _page == 1 ? _historyPage()
                   : _page == 2 ? _settingsPage()
                   : PairingPage(service: service, wifiDirect: wifiDirect,
+                      autoShowQr: _autoShowReceiveQr,
                       onManualConnect: _manualConnect),
             ),
           ),
@@ -305,7 +396,10 @@ class _ShareMHomePageState extends State<ShareMHomePage> {
       ])),
       bottomNavigationBar: wide ? null : NavigationBar(
         selectedIndex: _page,
-        onDestinationSelected: (value) => setState(() => _page = value),
+        onDestinationSelected: (value) => setState(() {
+          _page = value;
+          _autoShowReceiveQr = false;
+        }),
         destinations: const [
           NavigationDestination(icon: Icon(Icons.home_outlined),
             selectedIcon: Icon(Icons.home_rounded), label: 'الرئيسية'),
@@ -366,8 +460,9 @@ class _ShareMHomePageState extends State<ShareMHomePage> {
         colors: [ShareMTheme.teal, ShareMTheme.mint]),
       borderRadius: BorderRadius.circular(size * .3),
     ),
-    child: Icon(Icons.all_inclusive_rounded, color: Colors.white,
-      size: size * .62),
+    child: ClipRRect(
+      borderRadius: BorderRadius.circular(size * .3),
+      child: Image.asset('assets/branding/sharem.png', fit: BoxFit.cover)),
   );
 
   Widget _pageHeader(String heading, String desc) => Padding(
@@ -391,169 +486,26 @@ class _ShareMHomePageState extends State<ShareMHomePage> {
     ]),
   );
 
-  Widget _dashboard(bool wide) => SingleChildScrollView(
-    padding: EdgeInsets.symmetric(horizontal: wide ? 38 : 19, vertical: 26),
-    child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      _pageHeader('مرحبًا بك في ShareM', 'انقل ملفاتك بسرعة، دون إنترنت أو حساب'),
-      _hero(wide),
-      const SizedBox(height: 26),
-      Row(children: [
-        Expanded(child: Text('الأجهزة القريبة',
-          style: Theme.of(context).textTheme.titleLarge)),
-        TextButton.icon(
-          onPressed: _manualConnect,
-          icon: const Icon(Icons.add_link_rounded),
-          label: const Text('اتصال يدوي'),
-        ),
-      ]),
-      const SizedBox(height: 12),
-      if (service.startupError != null)
-        _notice(service.startupError!, Icons.error_outline, Colors.deepOrange),
-      if (service.peers.isEmpty)
-        _emptyDevices()
-      else
-        LayoutBuilder(builder: (ctx, bounds) {
-          final count = bounds.maxWidth > 720 ? 3 :
-              bounds.maxWidth > 450 ? 2 : 1;
-          return GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: service.peers.length,
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: count,
-              mainAxisExtent: 154,
-              mainAxisSpacing: 12,
-              crossAxisSpacing: 12,
-            ),
-            itemBuilder: (ctx, i) => _peerCard(service.peers[i]),
-          );
-        }),
-      const SizedBox(height: 25),
-      _sectionTitle('آخر عمليات النقل', () => setState(() => _page = 1)),
-      const SizedBox(height: 12),
-      if (service.history.isEmpty)
-        _notice('لا توجد عمليات سابقة حتى الآن', Icons.history_rounded,
-          ShareMTheme.teal)
-      else for (final entry in service.history.take(2)) _transferTile(entry),
-      const SizedBox(height: 36),
-    ]),
+  Widget _dashboard(bool wide) => PremiumDashboard(
+    deviceName: service.deviceName,
+    running: service.running,
+    peers: service.peers,
+    history: service.history,
+    error: service.startupError,
+    onSend: _pickCategory,
+    onReceive: () => setState(() {
+      _autoShowReceiveQr = true;
+      _page = 3;
+    }),
+    onPair: () => setState(() {
+      _autoShowReceiveQr = false;
+      _page = 3;
+    }),
+    onHistory: () => setState(() => _page = 1),
+    onSettings: () => setState(() => _page = 2),
+    onRefresh: service.refresh,
+    onPeer: _sendTo,
   );
-
-  Widget _hero(bool wide) => Container(
-    constraints: const BoxConstraints(minHeight: 235),
-    padding: EdgeInsets.all(wide ? 32 : 24),
-    decoration: BoxDecoration(
-      gradient: const LinearGradient(
-        begin: Alignment.topRight, end: Alignment.bottomLeft,
-        colors: [Color(0xFF086C71), Color(0xFF12A99C), Color(0xFF35CEAF)],
-      ),
-      borderRadius: BorderRadius.circular(28),
-      boxShadow: [BoxShadow(color: ShareMTheme.teal.withAlpha(42),
-        blurRadius: 28, offset: const Offset(0, 13))],
-    ),
-    child: Stack(children: [
-      Positioned(left: -25, top: -65,
-        child: Container(width: 210, height: 210,
-          decoration: BoxDecoration(shape: BoxShape.circle,
-            border: Border.all(color: Colors.white.withAlpha(40),
-              width: 28)))),
-      Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Row(children: [
-          Icon(Icons.wifi_tethering_rounded, color: Colors.white),
-          SizedBox(width: 8),
-          Text('مشاركة دون خوادم أو حساب',
-            style: TextStyle(color: Colors.white70, fontSize: 12,
-              fontWeight: FontWeight.w700)),
-        ]),
-        const SizedBox(height: 16),
-        const Text('شارك كل شيء.\nفي لحظات.',
-          style: TextStyle(color: Colors.white, fontSize: 30,
-            fontWeight: FontWeight.w900, height: 1.35)),
-        const SizedBox(height: 23),
-        Wrap(spacing: 12, runSpacing: 9, children: [
-          FilledButton.icon(
-            style: FilledButton.styleFrom(
-              backgroundColor: Colors.white,
-              foregroundColor: ShareMTheme.teal),
-            onPressed: _chooseDevice,
-            icon: const Icon(Icons.send_rounded),
-            label: const Text('إرسال ملفات'),
-          ),
-          OutlinedButton.icon(
-            style: OutlinedButton.styleFrom(
-              foregroundColor: Colors.white,
-              side: const BorderSide(color: Colors.white70)),
-            onPressed: () => setState(() => _page = 3),
-            icon: const Icon(Icons.move_to_inbox_rounded),
-            label: const Text('استقبال'),
-          ),
-        ]),
-      ]),
-    ]),
-  );
-
-  Widget _emptyDevices() => Card(
-    child: Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 30),
-      child: Column(children: [
-        Container(
-          padding: const EdgeInsets.all(22),
-          decoration: const BoxDecoration(
-            color: Color(0xFFE6F6F3), shape: BoxShape.circle),
-          child: const Icon(Icons.radar_rounded,
-            size: 51, color: ShareMTheme.teal),
-        ),
-        const SizedBox(height: 18),
-        const Text('جارٍ البحث عن أجهزة قريبة',
-          style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
-        const SizedBox(height: 7),
-        const Text('افتح ShareM على الجهاز الآخر واتصل بنفس شبكة Wi-Fi.\n'
-          'يمكنك أيضًا الاتصال يدويًا باستخدام عنوان الجهاز.',
-          textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 12, height: 1.7)),
-        const SizedBox(height: 15),
-        OutlinedButton.icon(
-          onPressed: _manualConnect,
-          icon: const Icon(Icons.link_rounded),
-          label: const Text('الاتصال بعنوان IP'),
-        ),
-      ]),
-    ),
-  );
-
-  Widget _peerCard(NearbyDevice peer) => Card(
-    child: InkWell(
-      borderRadius: BorderRadius.circular(24),
-      onTap: () => _sendTo(peer),
-      child: Padding(
-        padding: const EdgeInsets.all(17),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            const CircleAvatar(
-              backgroundColor: Color(0xFFE5F7F4),
-              child: Icon(Icons.devices_rounded, color: ShareMTheme.teal)),
-            const Spacer(),
-            const Icon(Icons.circle, size: 9, color: Color(0xFF24B98E)),
-            const SizedBox(width: 5),
-            const Text('متصل', style: TextStyle(fontSize: 11)),
-          ]),
-          const Spacer(),
-          Text(peer.name, maxLines: 1, overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
-          const SizedBox(height: 4),
-          Text(peer.endpoint, textDirection: TextDirection.ltr,
-            style: const TextStyle(color: Colors.grey, fontSize: 12)),
-        ]),
-      ),
-    ),
-  );
-
-  Widget _sectionTitle(String title, VoidCallback onTap) =>
-    Row(children: [
-      Expanded(child: Text(title,
-        style: Theme.of(context).textTheme.titleLarge)),
-      TextButton(onPressed: onTap, child: const Text('عرض الكل')),
-    ]);
 
   Widget _notice(String message, IconData icon, Color color) => Card(
     child: Padding(padding: const EdgeInsets.all(19),
@@ -717,7 +669,7 @@ class _ShareMHomePageState extends State<ShareMHomePage> {
         label: const Text('الاتصال يدويًا بجهاز'),
       ),
       const SizedBox(height: 20),
-      const Text('ShareM • إصدار تجريبي 0.1.0',
+      const Text('ShareM • إصدار تجريبي 0.4.0',
         textAlign: TextAlign.center,
         style: TextStyle(fontSize: 12, color: Colors.grey)),
     ]),

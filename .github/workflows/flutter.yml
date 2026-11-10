@@ -18,6 +18,8 @@ jobs:
       - name: Generate native projects and LAN permissions
         run: python3 tool/bootstrap.py
       - run: flutter pub get
+      - name: Generate ShareM launcher icons
+        run: dart run flutter_launcher_icons
       - name: Static analysis
         run: flutter analyze
       - name: Tests

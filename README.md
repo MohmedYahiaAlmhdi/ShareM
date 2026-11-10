@@ -2,8 +2,16 @@
 
 **ShareM** is an Arabic-first Flutter peer-to-peer LAN file sharing app with a teal Material 3 interface. It targets Android, iOS, Windows, macOS and Linux.
 
-**Status: 0.3.0 development prototype, not a production-ready alternative to SHAREit/ShareMe.**
+**Status: 0.4.0 development prototype, not a production-ready alternative to SHAREit/ShareMe.**
 The current transport is plain HTTP over local Wi-Fi; **not encrypted**. Use trusted networks only.
+
+## New ShareM 0.4.0 interface
+
+- Clean, mobile-first teal/cyan ShareMe-style experience with a single prominent Send/Receive choice, six quick file categories, a live animated nearby-device radar, recent activity and minimal navigation
+- **Choose files first**, then choose the receiver; if none are connected, QR/Wi-Fi Direct pairing stays available without discarding the chosen files
+- The radar displays real discovered peers only; device locations on the radar are decorative and **are not** distance estimates
+- Prominent pairing page and quick access to app updates in Settings
+- Android/iOS launcher icon is generated from original ShareM branding during the CI build
 
 ## Implemented
 

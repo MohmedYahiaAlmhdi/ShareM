@@ -41,6 +41,7 @@ jobs:
       - name: Test
         run: |
           flutter pub get
+          dart run flutter_launcher_icons
           flutter analyze
           flutter test
       - name: Build signed split Release APKs
