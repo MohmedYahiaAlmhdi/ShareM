@@ -47,7 +47,10 @@ class _PairingPageState extends State<PairingPage> {
                 padding: const EdgeInsets.all(14),
                 child: QrImageView(data: peer.encode(), version: QrVersions.auto,
                   size: 235, backgroundColor: Colors.white,
-                  foregroundColor: ShareMTheme.teal),
+                  eyeStyle: const QrEyeStyle(color: ShareMTheme.teal),
+                  dataModuleStyle: const QrDataModuleStyle(
+                    color: ShareMTheme.teal,
+                  )),
               ),
             ),
             const SizedBox(height: 12),
