@@ -1,0 +1,82 @@
+name: ShareM Signed Android Release
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check signing secrets
+        env:
+          KEYSTORE_B64: ${{ secrets.SHAREM_SIGNING_KEYSTORE_B64 }}
+          STORE_PASSWORD: ${{ secrets.SHAREM_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.SHAREM_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.SHAREM_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          if [[ -z "$KEYSTORE_B64" || -z "$STORE_PASSWORD" || -z "$KEY_ALIAS" || -z "$KEY_PASSWORD" ]]; then
+            echo "::error::Configure the four SHAREM signing secrets before release."
+            exit 1
+          fi
+          mkdir -p android/app
+          printf '%s' "$KEYSTORE_B64" | base64 --decode > android/app/sharem-release.jks
+          chmod 600 android/app/sharem-release.jks
+          {
+            printf 'storeFile=sharem-release.jks\n'
+            printf 'storePassword=%s\n' "$STORE_PASSWORD"
+            printf 'keyAlias=%s\n' "$KEY_ALIAS"
+            printf 'keyPassword=%s\n' "$KEY_PASSWORD"
+          } > android/key.properties
+          chmod 600 android/key.properties
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Generate platform folders and Android signing
+        run: python3 tool/bootstrap.py
+      - name: Test
+        run: |
+          flutter pub get
+          flutter analyze
+          flutter test
+      - name: Build signed split Release APKs
+        run: flutter build apk --release --split-per-abi --split-debug-info=build/symbols
+      - name: Verify signatures
+        shell: bash
+        run: |
+          SIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          test -x "$SIGNER" || exit 1
+          for abi in arm64-v8a armeabi-v7a x86_64; do
+            "$SIGNER" verify --verbose --print-certs "build/app/outputs/flutter-apk/app-$abi-release.apk"
+          done
+      - name: Generate versioned APKs and metadata
+        run: python3 tool/make_release_manifest.py
+      - name: Upload signed APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: ShareM-signed-release
+          path: build/sharem_release/*
+          if-no-files-found: error
+          retention-days: 90
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          VERSION="$(sed -n 's/^version: \([0-9]*\.[0-9]*\.[0-9]*\)+[0-9]*$/\1/p' pubspec.yaml)"
+          test -n "$VERSION" || exit 1
+          if [[ "$GITHUB_REF_TYPE" == "tag" && "$GITHUB_REF_NAME" != "v$VERSION" ]]; then
+            echo "::error::Tag/version mismatch"
+            exit 1
+          fi
+          if gh release view "v$VERSION" >/dev/null 2>&1; then
+            echo "::error::Already published; bump the version first."
+            exit 1
+          fi
+          gh release create "v$VERSION" build/sharem_release/* \
+            --target "$GITHUB_SHA" --title "ShareM v$VERSION" \
+            --notes "Signed per-architecture Android Release APKs with checksummed in-app updates. Note: local file transfers are not encrypted."

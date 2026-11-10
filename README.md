@@ -2,7 +2,7 @@
 
 **ShareM** is an Arabic-first Flutter peer-to-peer LAN file sharing app with a teal Material 3 interface. It targets Android, iOS, Windows, macOS and Linux.
 
-**Status: 0.2.0 development prototype, not a production-ready alternative to SHAREit/ShareMe.**
+**Status: 0.3.0 development prototype, not a production-ready alternative to SHAREit/ShareMe.**
 The current transport is plain HTTP over local Wi-Fi; **not encrypted**. Use trusted networks only.
 
 ## Implemented
@@ -16,11 +16,13 @@ The current transport is plain HTTP over local Wi-Fi; **not encrypted**. Use tru
 - Multi-file streaming, per-file SHA-256 integrity checking, collision-safe file names
 - Progress indicator, outgoing cancellation, local nickname and transfer history
 - Incoming files stored in the app's documents/ShareM/Received folder, with OS share-sheet export for received files where supported
-- GitHub Actions checks including Flutter analysis, tests and Android debug APK
+- In-app Android APK update checker with ABI selection and SHA-256 download verification
+- Android installer launches from an app-private APK via FileProvider, with OS permission and confirmation
+- GitHub Actions checks and separate signed Release workflow with a stable signing key from repository secrets
 
 ## Not implemented yet
 
-Automatic hotspot setup, AirDrop interoperability, Bluetooth transfers, encrypted sessions, browser client, folder trees, resume, background transfers, Android public Downloads auto-save, full real-device testing and store-ready signed releases.
+Automatic hotspot setup, AirDrop interoperability, Bluetooth transfers, encrypted sessions, browser client, folder trees, resume, background transfers, Android public Downloads auto-save, full real-device testing and commercial store readiness.
 
 ## Run the app
 
@@ -43,6 +45,16 @@ For Android:
 ~~~bash
 flutter build apk --debug
 ~~~
+
+## Release builds and in-app updates
+
+Version **0.3.0+3** introduces Android update checking under **الإعدادات → تحديثات ShareM**. It checks the latest published GitHub Release's update.json, chooses a signed APK for the CPU ABI, validates size and SHA-256, and invokes Android's installer (requires user confirmation).
+
+To produce installable **signed release APKs** instead of debug builds, configure the four permanent signing secrets documented in [docs/releasing.md](docs/releasing.md). Then run **ShareM Signed Android Release** in GitHub Actions; this builds optimized split APKs for `arm64-v8a`, `armeabi-v7a`, and `x86_64`, and publishes matching update.json.
+
+Do not publish with an ephemeral debug key: updates must use the SAME release signing certificate for every subsequent version. The old debug build and a permanently signed release build require a **one-time reinstall**; back up incoming files before removing the debug app.
+
+Important: iOS, macOS, Windows, and Linux require separate platform-specific signed installers; APK auto-update is Android-only.
 
 ## QR pairing
 Open **الاقتران** on both devices. On the receiver choose **عرض رمز جهازي**; on the sender choose **مسح QR**. Both must already be on the same LAN or established Wi-Fi Direct group. The QR contains only a local IP, port, temporary application ID and nickname (no password/token). A scanned QR is *not* an authenticated cryptographic identity. Windows and Linux use paste-QR-data or manual IP instead of camera scanning.

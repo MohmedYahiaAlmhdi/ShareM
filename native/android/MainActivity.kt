@@ -12,6 +12,10 @@ import android.net.wifi.p2p.WifiP2pDevice
 import android.net.wifi.p2p.WifiP2pManager
 import android.os.Build
 import android.os.Bundle
+import android.net.Uri
+import android.provider.Settings
+import java.io.File
+import androidx.core.content.FileProvider
 import androidx.core.content.ContextCompat
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -62,6 +66,14 @@ class MainActivity : FlutterActivity(), MethodChannel.MethodCallHandler,
             "sharem/wifi_direct").setMethodCallHandler(this)
         EventChannel(flutterEngine.dartExecutor.binaryMessenger,
             "sharem/wifi_direct/events").setStreamHandler(this)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger,
+            "sharem/installer").setMethodCallHandler { call, result ->
+            when (call.method) {
+                "getSupportedAbis" -> result.success(Build.SUPPORTED_ABIS.toList())
+                "installUpdate" -> installUpdate(call.argument<String>("path"), result)
+                else -> result.notImplemented()
+            }
+        }
 
         if (packageManager.hasSystemFeature(PackageManager.FEATURE_WIFI_DIRECT)) {
             manager = getSystemService(Context.WIFI_P2P_SERVICE) as? WifiP2pManager
@@ -264,6 +276,50 @@ class MainActivity : FlutterActivity(), MethodChannel.MethodCallHandler,
 
     override fun onCancel(arguments: Any?) {
         sink = null
+    }
+
+
+    /**
+     * Android updates are never installed silently. The Android package
+     * installer checks packageId, versionCode and signing certificate.
+     */
+    private fun installUpdate(apkPath: String?, result: MethodChannel.Result) {
+        if (apkPath.isNullOrEmpty()) {
+            result.error("bad_path", "Missing APK path", null)
+            return
+        }
+        try {
+            val allowedDir = File(cacheDir, "sharem_updates").canonicalFile
+            val file = File(apkPath).canonicalFile
+            if (!file.path.startsWith(allowedDir.path + File.separator) ||
+                !file.isFile || !file.name.endsWith(".apk") ||
+                file.length() < 1024L) {
+                result.error("bad_apk", "Invalid ShareM update file", null)
+                return
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+                !packageManager.canRequestPackageInstalls()) {
+                val settings = Intent(
+                    Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                    Uri.parse("package:" + packageName)
+                )
+                startActivity(settings)
+                result.success("permission_required")
+                return
+            }
+            val content = FileProvider.getUriForFile(
+                this, packageName + ".sharefiles", file
+            )
+            val intent = Intent(Intent.ACTION_VIEW)
+                .setDataAndType(content, "application/vnd.android.package-archive")
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            startActivity(intent)
+            result.success("launched")
+        } catch (e: Exception) {
+            result.error("installer_failed",
+                e.message ?: "Cannot open Android package installer", null)
+        }
     }
 
     override fun onDestroy() {
