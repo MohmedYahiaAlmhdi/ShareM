@@ -78,8 +78,8 @@ class TransferEntry {
   bool cancellationRequested = false;
 
   double get progress => totalBytes <= 0
-      ? (status == TransferStatus.completed ? 1 : 0)
-      : (doneBytes / totalBytes).clamp(0.0, 1.0);
+      ? (status == TransferStatus.completed ? 1.0 : 0.0)
+      : (doneBytes / totalBytes).clamp(0.0, 1.0).toDouble();
 
   bool get isRunning => const [
     TransferStatus.preparing, TransferStatus.waiting,
