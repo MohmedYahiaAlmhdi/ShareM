@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../core/transfer_models.dart';
+import '../core/wifi_direct_service.dart';
 import 'nearby_radar.dart';
 import 'sharem_theme.dart';
 
@@ -12,6 +13,9 @@ class PremiumDashboard extends StatelessWidget {
     required this.onSend, required this.onReceive, required this.onPair,
     required this.onHistory, required this.onSettings,
     required this.onRefresh, required this.onPeer,
+    this.directPeers = const <WifiDirectPeer>[],
+    this.directAvailable = false, this.directBusy = false,
+    this.directConnected = false, this.onDirectPeer,
     this.error,
   });
 
@@ -22,6 +26,9 @@ class PremiumDashboard extends StatelessWidget {
   final ValueChanged<ShareCategory> onSend;
   final VoidCallback onReceive, onPair, onHistory, onSettings, onRefresh;
   final ValueChanged<NearbyDevice> onPeer;
+  final List<WifiDirectPeer> directPeers;
+  final bool directAvailable, directBusy, directConnected;
+  final ValueChanged<WifiDirectPeer>? onDirectPeer;
   final String? error;
 
   @override
@@ -149,7 +156,7 @@ class PremiumDashboard extends StatelessWidget {
             const SizedBox(width: 10),
             _counter(Icons.south_west_rounded, 'مستلمة', received),
             const SizedBox(width: 10),
-            _counter(Icons.devices_rounded, 'أجهزة', peers.length),
+            _counter(Icons.devices_rounded, 'أجهزة', peers.length + directPeers.length),
           ]),
           const SizedBox(height: 20),
           Row(children: [
@@ -276,22 +283,56 @@ class PremiumDashboard extends StatelessWidget {
         _heading(context, 'الأجهزة القريبة',
           'اختر جهازًا لإرسال الملفات إليه'),
         const SizedBox(height: 12),
-        Text(peers.isEmpty
-          ? 'لم يظهر جهاز بعد. افتح ShareM على الجهاز الآخر أو استخدم QR.'
-          : 'تم العثور على ' + peers.length.toString() + ' جهاز.',
+        Text(peers.isEmpty && directPeers.isEmpty
+          ? 'لم يظهر جهاز بعد. شغّل Wi-Fi على الهاتفين، افتح ShareM على كليهما، واضغط بحث.'
+          : 'عُثر على ' + (peers.length + directPeers.length).toString() + ' جهاز قريب.',
           style: const TextStyle(color: Color(0xFF56727A),
             fontSize: 12.5, height: 1.6)),
+        if (directBusy) const Padding(
+          padding: EdgeInsets.only(top: 12),
+          child: LinearProgressIndicator(minHeight: 3)),
+        if (directConnected) const Padding(
+          padding: EdgeInsets.only(top: 10),
+          child: Text('تم إنشاء اتصال Wi-Fi Direct. انتظر لحظة حتى يظهر الجهاز للملفات.',
+            style: TextStyle(color: ShareMTheme.teal, fontSize: 12))),
         const SizedBox(height: 16),
         FilledButton.icon(
           key: const Key('nearby-pair'),
           onPressed: onPair,
           icon: const Icon(Icons.qr_code_scanner_rounded),
-          label: const Text('الاتصال عبر QR / Wi-Fi Direct')),
+          label: const Text('إظهار QR أو مسحه')),
         const SizedBox(height: 7),
         TextButton.icon(
-          onPressed: onRefresh,
-          icon: const Icon(Icons.refresh_rounded),
-          label: const Text('بحث من جديد')),
+          onPressed: directBusy ? null : onRefresh,
+          icon: const Icon(Icons.radar_rounded),
+          label: Text(directBusy ? 'جارٍ اكتشاف الأجهزة…' : 'بحث عن أجهزة قريبة')),
+        if (!directAvailable)
+          const Padding(padding: EdgeInsets.only(top: 5),
+            child: Text('اكتشاف Wi-Fi Direct يتطلب Android وجهازًا يدعم الميزة. يمكن استخدام QR على شبكة Wi-Fi مشتركة.',
+              style: TextStyle(fontSize: 11, color: Colors.grey))),
+        const SizedBox(height: 10),
+        for (final peer in peers)
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.phone_android_rounded, color: ShareMTheme.teal),
+            title: Text(peer.name, maxLines: 1,
+              overflow: TextOverflow.ellipsis),
+            subtitle: const Text('على الشبكة المحلية'),
+            trailing: const Icon(Icons.chevron_left_rounded),
+            onTap: () => onPeer(peer),
+          ),
+        for (final peer in directPeers)
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.wifi_tethering_rounded,
+              color: Color(0xFF2794C4)),
+            title: Text(peer.name, maxLines: 1,
+              overflow: TextOverflow.ellipsis),
+            subtitle: const Text('Wi-Fi Direct • بدون راوتر'),
+            trailing: const Icon(Icons.link_rounded),
+            onTap: directBusy || directConnected || onDirectPeer == null ? null :
+              () => onDirectPeer!(peer),
+          ),
         if (error != null) Padding(
           padding: const EdgeInsets.only(top: 8),
           child: Text(error!, style: const TextStyle(
@@ -305,11 +346,16 @@ class PremiumDashboard extends StatelessWidget {
         border: Border.all(color: const Color(0xFFE6F1F2))),
       child: large ? Row(children: [
         Expanded(flex: 6, child: NearbyRadar(
-          peers: peers, deviceName: deviceName, onTap: onPeer)),
+          peers: peers, deviceName: deviceName, onTap: onPeer,
+          directPeers: directPeers, onDirectTap: directBusy || directConnected ? null : onDirectPeer,
+          busy: directBusy)),
         const SizedBox(width: 18),
         Expanded(flex: 5, child: controls),
       ]) : Column(children: [
-        NearbyRadar(peers: peers, deviceName: deviceName, onTap: onPeer),
+        NearbyRadar(peers: peers, deviceName: deviceName, onTap: onPeer,
+          directPeers: directPeers,
+          onDirectTap: directBusy || directConnected ? null : onDirectPeer,
+          busy: directBusy),
         const SizedBox(height: 10),
         controls,
       ]),

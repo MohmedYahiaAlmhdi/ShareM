@@ -11,7 +11,7 @@ import 'package:path_provider/path_provider.dart';
 
 import 'release_models.dart';
 
-enum UpdatePhase { idle, checking, current, available, downloading, ready, installing, failed }
+enum UpdatePhase { idle, checking, current, unpublished, available, downloading, ready, installing, failed }
 
 /// GitHub Releases update client. Android owns installation; no silent installs.
 class UpdateService extends ChangeNotifier {
@@ -47,8 +47,16 @@ class UpdateService extends ChangeNotifier {
     final http = HttpClient()..connectionTimeout = const Duration(seconds: 12);
     try {
       currentVersion = (await PackageInfo.fromPlatform()).version;
+      release = null;
+      selected = null;
       final request = await http.getUrl(manifestUrl);
       final response = await request.close().timeout(const Duration(seconds: 20));
+      if (response.statusCode == HttpStatus.notFound) {
+        release = null;
+        selected = null;
+        _emit(UpdatePhase.unpublished);
+        return;
+      }
       if (response.statusCode != 200) {
         throw HttpException('No published release (' + response.statusCode.toString() + ')');
       }
