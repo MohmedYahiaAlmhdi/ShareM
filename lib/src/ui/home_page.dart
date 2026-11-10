@@ -30,6 +30,7 @@ class _ShareMHomePageState extends State<ShareMHomePage> {
   bool _showingDevicePicker = false;
   bool _autoShowReceiveQr = false;
   int _lastAutoPickerPeerCount = 0;
+  TransferDirection? _historyFilter;
 
   LanTransferService get service => widget.service;
 
@@ -548,17 +549,62 @@ class _ShareMHomePageState extends State<ShareMHomePage> {
     }
   }
 
-  Widget _historyPage() => SingleChildScrollView(
-    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 27),
-    child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      _pageHeader('عمليات النقل', 'تابع الملفات المرسلة والمستقبلة'),
-      if (service.history.isEmpty)
-        _notice('ستظهر عملياتك هنا بعد أول عملية نقل',
-          Icons.inventory_2_outlined, ShareMTheme.teal)
-      else
-        for (final entry in service.history) _transferTile(entry),
-    ]),
-  );
+  Widget _historyPage() {
+    final entries = _historyFilter == null
+      ? service.history
+      : service.history.where(
+          (e) => e.direction == _historyFilter).toList();
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 27),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _pageHeader('عمليات النقل', 'تابع الملفات المرسلة والمستقبلة'),
+          Wrap(spacing: 8, runSpacing: 8, children: [
+            ChoiceChip(
+              label: const Text('الكل'),
+              selected: _historyFilter == null,
+              onSelected: (_) => setState(() => _historyFilter = null)),
+            ChoiceChip(
+              label: const Text('المرسلة'),
+              selected: _historyFilter == TransferDirection.outgoing,
+              onSelected: (_) => setState(() =>
+                _historyFilter = TransferDirection.outgoing)),
+            ChoiceChip(
+              label: const Text('المستقبلة'),
+              selected: _historyFilter == TransferDirection.incoming,
+              onSelected: (_) => setState(() =>
+                _historyFilter = TransferDirection.incoming)),
+          ]),
+          const SizedBox(height: 12),
+          if (entries.isEmpty)
+            _notice('لا توجد عمليات في هذا القسم بعد.',
+              Icons.inventory_2_outlined, ShareMTheme.teal)
+          else
+            for (final entry in entries) _transferTile(entry),
+        ]),
+    );
+  }
+
+  Future<void> _confirmCancel(TransferEntry entry) async {
+    final approved = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        icon: const Icon(Icons.cancel_outlined,
+          color: Colors.deepOrange, size: 40),
+        title: const Text('إلغاء نقل الملفات؟'),
+        content: const Text(
+          'سيتوقف النقل الجاري. لن يتم حفظ الملف غير المكتمل، '
+          'وستبقى الملفات المستلمة بنجاح محفوظة.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('استمرار النقل')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('إلغاء النقل')),
+        ],
+      ),
+    );
+    if (approved == true) service.cancel(entry);
+  }
 
   Widget _transferTile(TransferEntry entry) {
     final sending = entry.direction == TransferDirection.outgoing;
@@ -601,9 +647,10 @@ class _ShareMHomePageState extends State<ShareMHomePage> {
           )),
           Text(status, style: TextStyle(
             fontSize: 11, fontWeight: FontWeight.w800, color: accent)),
-          if (entry.isRunning && sending)
-            IconButton(tooltip: 'إلغاء', onPressed: () => service.cancel(entry),
-              icon: const Icon(Icons.close_rounded)),
+          if (entry.isRunning)
+            IconButton(tooltip: 'إلغاء نقل الملفات',
+              onPressed: () => _confirmCancel(entry),
+              icon: const Icon(Icons.cancel_outlined)),
         ]),
         if (entry.isRunning || entry.status == TransferStatus.completed) ...[
           const SizedBox(height: 13),
@@ -619,6 +666,21 @@ class _ShareMHomePageState extends State<ShareMHomePage> {
               textDirection: TextDirection.ltr,
               style: const TextStyle(fontSize: 11, color: Colors.grey))),
         ],
+        if (entry.status == TransferStatus.transferring &&
+            entry.bytesPerSecond > 0)
+          Align(
+            alignment: Alignment.centerRight,
+            child: Text(
+              humanSize(entry.bytesPerSecond.round()) + '/s' +
+                (entry.secondsRemaining == null
+                  ? '' : ' • الوقت المتبقي تقريبًا: ' +
+                    (entry.secondsRemaining! >= 60
+                      ? (entry.secondsRemaining! ~/ 60).toString() + ' دقيقة'
+                      : entry.secondsRemaining.toString() + ' ثانية')),
+              style: TextStyle(fontSize: 11,
+                color: Theme.of(context).colorScheme.onSurfaceVariant),
+            ),
+          ),
         if (entry.error != null)
           Padding(padding: const EdgeInsets.only(top: 8),
             child: Text(entry.error!, style:
@@ -669,7 +731,7 @@ class _ShareMHomePageState extends State<ShareMHomePage> {
         ShareMTheme.teal),
       const SizedBox(height: 15),
       const SizedBox(height: 20),
-      const Text('ShareM • إصدار تجريبي 0.5.0',
+      const Text('ShareM • إصدار تجريبي 0.6.0',
         textAlign: TextAlign.center,
         style: TextStyle(fontSize: 12, color: Colors.grey)),
     ]),

@@ -65,6 +65,7 @@ class TransferEntry {
     this.error,
     List<String>? receivedPaths,
     DateTime? date,
+    this.transferStartedAt,
   }) : receivedPaths = receivedPaths ?? <String>[],
        date = date ?? DateTime.now();
 
@@ -79,6 +80,22 @@ class TransferEntry {
   String? error;
   final List<String> receivedPaths;
   bool cancellationRequested = false;
+  DateTime? transferStartedAt;
+
+  /// Estimated average throughput, recalculated while the transfer is active.
+  double get bytesPerSecond {
+    if (status != TransferStatus.transferring ||
+        transferStartedAt == null || doneBytes <= 0) return 0;
+    final millis = DateTime.now().difference(transferStartedAt!).inMilliseconds;
+    if (millis < 250) return 0;
+    return doneBytes * 1000 / millis;
+  }
+
+  int? get secondsRemaining {
+    final speed = bytesPerSecond;
+    if (speed < 1024 || totalBytes <= doneBytes) return null;
+    return ((totalBytes - doneBytes) / speed).ceil();
+  }
 
   double get progress => totalBytes <= 0
       ? (status == TransferStatus.completed ? 1.0 : 0.0)
@@ -128,11 +145,13 @@ class IncomingOffer {
     required this.peerName,
     required this.sourceIp,
     required this.files,
+    this.cancelToken,
   });
   final String id;
   final String peerName;
   final String sourceIp;
   final List<FileManifest> files;
+  final String? cancelToken;
   String status = 'pending';
   String? token;
   int nextIndex = 0;

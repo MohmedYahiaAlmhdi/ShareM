@@ -8,6 +8,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'transfer_models.dart';
+import 'verified_file_writer.dart';
 
 /// Direct LAN file transfer. HTTP transport is NOT encrypted in v0.1.
 class LanTransferService extends ChangeNotifier {
@@ -19,6 +20,8 @@ class LanTransferService extends ChangeNotifier {
   final history = <TransferEntry>[];
   final _offers = <String, IncomingOffer>{};
   final _uploads = <String, HttpClientRequest>{};
+  final _remoteCancellations =
+      <String, ({NearbyDevice peer, String offerId, String secret})>{};
   final _receivingOffers = <String>{};
   HttpServer? _server;
   RawDatagramSocket? _socket;
@@ -220,11 +223,44 @@ class LanTransferService extends ChangeNotifier {
     } finally { client.close(force: true); }
   }
 
+  /// Both sender and receiver can cancel an in-progress transfer. A sender's
+  /// cancellation uses an unguessable, per-offer secret to notify the peer.
   void cancel(TransferEntry entry) {
-    if (entry.direction != TransferDirection.outgoing || !entry.isRunning) return;
+    if (!entry.isRunning) return;
     entry.cancellationRequested = true;
-    _uploads[entry.id]?.abort(StateError('Cancelled'));
-    entry.status = TransferStatus.cancelled; changed();
+    entry.status = TransferStatus.cancelled;
+    if (entry.direction == TransferDirection.outgoing) {
+      _uploads[entry.id]?.abort(const TransferCancelledException());
+      final remote = _remoteCancellations[entry.id];
+      if (remote != null) unawaited(_notifyCancellation(remote));
+    } else {
+      final offer = _offers[entry.id];
+      if (offer != null && offer.status == 'accepted') {
+        offer.status = 'cancelled';
+      }
+    }
+    changed();
+    unawaited(_persist());
+  }
+
+  Future<void> _notifyCancellation(
+    ({NearbyDevice peer, String offerId, String secret}) session,
+  ) async {
+    final http = _client();
+    try {
+      final req = await http.postUrl(Uri(
+        scheme: 'http', host: session.peer.host, port: session.peer.port,
+        path: '/v1/cancel/' + session.offerId,
+      )).timeout(const Duration(seconds: 5));
+      req.headers.set('X-ShareM-Cancel', session.secret);
+      req.contentLength = 0;
+      await (await req.close().timeout(const Duration(seconds: 5)))
+        .drain<void>();
+    } catch (_) {
+      // The remote device might already be disconnected or stopped.
+    } finally {
+      http.close(force: true);
+    }
   }
 
   void _check(TransferEntry entry) {
@@ -252,10 +288,21 @@ class LanTransferService extends ChangeNotifier {
       _check(entry);
       entry.totalBytes = manifest.fold<int>(0, (sum, file) => sum + file.size);
       entry.status = TransferStatus.waiting; changed();
-      final offer = await _post(client, peer, '/v1/offer', {'sender': deviceName,
-        'files': manifest.map((f) => f.toJson()).toList()});
+      final cancelSecret = randomHex(24);
+      final offer = await _post(client, peer, '/v1/offer', {
+        'sender': deviceName,
+        'cancelToken': cancelSecret,
+        'files': manifest.map((f) => f.toJson()).toList(),
+      });
       final id = offer['offerId'];
       if (id is! String) throw const FormatException('Invalid offer ID');
+      _remoteCancellations[entry.id] = (
+        peer: peer, offerId: id, secret: cancelSecret,
+      );
+      if (entry.cancellationRequested) {
+        unawaited(_notifyCancellation(_remoteCancellations[entry.id]!));
+        throw const TransferCancelledException();
+      }
       String? token;
       for (var i = 0; i < 120; i++) {
         _check(entry);
@@ -266,12 +313,17 @@ class LanTransferService extends ChangeNotifier {
         if (status['status'] == 'rejected') {
           entry.status = TransferStatus.rejected; changed(); return;
         }
+        if (status['status'] == 'cancelled') {
+          entry.status = TransferStatus.cancelled; changed(); return;
+        }
         if (status['status'] == 'accepted') {
           token = status['token'] as String?; break;
         }
       }
       if (token == null) throw TimeoutException('Receiver did not accept');
-      entry.status = TransferStatus.transferring; changed();
+      entry.status = TransferStatus.transferring;
+      entry.transferStartedAt = DateTime.now();
+      changed();
       for (var i = 0; i < files.length; i++) {
         _check(entry);
         final req = await client.postUrl(Uri(scheme: 'http', host: peer.host,
@@ -292,7 +344,9 @@ class LanTransferService extends ChangeNotifier {
       entry.status = entry.cancellationRequested ? TransferStatus.cancelled : TransferStatus.failed;
       entry.error = e.toString();
     } finally {
-      _uploads.remove(entry.id); client.close(force: true);
+      _uploads.remove(entry.id);
+      _remoteCancellations.remove(entry.id);
+      client.close(force: true);
       changed(); await _persist();
     }
   }
@@ -306,7 +360,8 @@ class LanTransferService extends ChangeNotifier {
       history.insert(0, TransferEntry(id: offer.id, peerName: offer.peerName,
         files: offer.files.map((f) => f.name).toList(),
         direction: TransferDirection.incoming, status: TransferStatus.transferring,
-        totalBytes: offer.totalBytes));
+        totalBytes: offer.totalBytes,
+        transferStartedAt: DateTime.now()));
     }
     incomingOffer = null; changed(); _persist();
   }
@@ -356,6 +411,166 @@ class LanTransferService extends ChangeNotifier {
         if (rawFiles.isEmpty || rawFiles.length > 100) throw const FormatException('Invalid files');
         final files = rawFiles.map(FileManifest.fromJson).toList();
         final sender = body['sender'] is String ? body['sender'] as String : 'Nearby device';
+        final rawCancelToken = body['cancelToken'];
+        if (rawCancelToken != null && (rawCancelToken is! String ||
+            !RegExp(r'^[a-f0-9]{48}
+        final offer = IncomingOffer(id: randomHex(24),
+          peerName: sender.length > 36 ? sender.substring(0, 36) : sender,
+          sourceIp: req.connectionInfo?.remoteAddress.address ?? '',
+          files: files, cancelToken: rawCancelToken as String?);
+        _offers[offer.id] = offer;
+        incomingOffer = offer; changed();
+        _reply(req, 200, {'offerId': offer.id}); return;
+      }
+      if (req.method == 'POST' && route.length == 3 &&
+          route[0] == 'v1' && route[1] == 'cancel') {
+        final offer = _offers[route[2]];
+        if (offer == null || offer.cancelToken == null ||
+            !_sameSender(req, offer) ||
+            req.headers.value('X-ShareM-Cancel') != offer.cancelToken) {
+          _reply(req, 403, {'error': 'Cancellation not authorized'});
+          return;
+        }
+        if (offer.status == 'pending' || offer.status == 'accepted') {
+          offer.status = 'cancelled';
+          if (incomingOffer?.id == offer.id) incomingOffer = null;
+          for (final entry in history.where((e) => e.id == offer.id)) {
+            entry.status = TransferStatus.cancelled;
+            entry.cancellationRequested = true;
+          }
+          changed();
+          unawaited(_persist());
+        }
+        _reply(req, 200, {'status': offer.status});
+        return;
+      }
+      if (req.method == 'GET' && route.length == 3 &&
+          route[0] == 'v1' && route[1] == 'status') {
+        final offer = _offers[route[2]];
+        if (offer == null || !_sameSender(req, offer)) {
+          _reply(req, 404, {'error': 'Not found'}); return;
+        }
+        _reply(req, 200, {'status': offer.status,
+          if (offer.status == 'accepted') 'token': offer.token}); return;
+      }
+      if (req.method == 'POST' && route.length == 4 &&
+          route[0] == 'v1' && route[1] == 'files') {
+        final offer = _offers[route[2]];
+        final index = int.tryParse(route[3]);
+        if (offer == null || index == null || index < 0 ||
+            index >= offer.files.length || offer.status != 'accepted' ||
+            index != offer.nextIndex || _receivingOffers.contains(offer.id) ||
+            !_sameSender(req, offer) ||
+            req.headers.value('X-ShareM-Token') != offer.token) {
+          _reply(req, 403, {'error': 'Unauthorized'}); return;
+        }
+        if (req.contentLength != offer.files[index].size) {
+          _reply(req, 400, {'error': 'Size mismatch'}); return;
+        }
+        _receivingOffers.add(offer.id);
+        try {
+          await _receive(req, offer, index);
+        } finally {
+          _receivingOffers.remove(offer.id);
+        }
+        return;
+      }
+      _reply(req, 404, {'error': 'Not found'});
+    } on FormatException catch (e) {
+      _reply(req, 400, {'error': e.message});
+    } catch (_) {
+      try { _reply(req, 500, {'error': 'Transfer failed'}); } catch (_) {}
+    }
+  }
+
+  bool _sameSender(HttpRequest req, IncomingOffer offer) =>
+    req.connectionInfo?.remoteAddress.address == offer.sourceIp;
+
+  Future<void> _receive(HttpRequest req, IncomingOffer offer, int index) async {
+    final metadata = offer.files[index];
+    final directory = Directory(p.join(
+      (await getApplicationDocumentsDirectory()).path, 'ShareM', 'Received'));
+    final entry = history.firstWhere((e) => e.id == offer.id);
+    try {
+      final destination = await VerifiedFileWriter.receive(
+        directory: directory,
+        metadata: metadata,
+        chunks: req,
+        onProgress: (count) {
+          entry.doneBytes += count;
+          _progressChanged();
+        },
+        isCancelled: () =>
+          offer.status == 'cancelled' || entry.cancellationRequested,
+      );
+      entry.receivedPaths.add(destination);
+      offer.nextIndex += 1;
+      if (offer.nextIndex == offer.files.length) {
+        offer.status = 'completed';
+        entry.status = TransferStatus.completed;
+        await _persist();
+      }
+      changed();
+      _reply(req, 200, {'ok': true});
+    } catch (error) {
+      final cancelled = offer.status == 'cancelled' ||
+          error is TransferCancelledException;
+      offer.status = cancelled ? 'cancelled' : 'failed';
+      entry.status = cancelled
+        ? TransferStatus.cancelled : TransferStatus.failed;
+      entry.error = cancelled ? null : error.toString();
+      changed();
+      await _persist();
+      try {
+        _reply(req, cancelled ? 410 : 422,
+          {'error': cancelled ? 'Cancelled' : 'Integrity check failed'});
+      } catch (_) {}
+    }
+  }
+
+  Future<Map<String, dynamic>> _post(HttpClient client, NearbyDevice peer,
+      String route, Object body) async {
+    final req = await client.postUrl(Uri(scheme: 'http', host: peer.host,
+      port: peer.port, path: route));
+    final payload = utf8.encode(jsonEncode(body));
+    req.headers.contentType = ContentType.json;
+    req.contentLength = payload.length; req.add(payload);
+    return _decode(await req.close());
+  }
+
+  Future<Map<String, dynamic>> _decode(HttpClientResponse response) async {
+    final body = await utf8.decoder.bind(response).join();
+    if (response.statusCode != 200) {
+      throw HttpException('Peer responded ' + response.statusCode.toString() + ': ' + body);
+    }
+    final json = jsonDecode(body);
+    if (json is! Map) throw const FormatException('Invalid server response');
+    return Map<String, dynamic>.from(json);
+  }
+
+  void _reply(HttpRequest request, int status, Object body) {
+    request.response.statusCode = status;
+    request.response.headers.contentType = ContentType.json;
+    request.response.write(jsonEncode(body));
+    request.response.close();
+  }
+
+  Future<void> _persist() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('history', jsonEncode(history.take(50).map((e) => e.toJson()).toList()));
+    } catch (_) {}
+  }
+
+  @override
+  void dispose() {
+    _disposed = true; _heartbeat?.cancel(); _cleanup?.cancel();
+    _socket?.close(); _server?.close(force: true); super.dispose();
+  }
+}
+).hasMatch(rawCancelToken))) {
+          throw const FormatException('Invalid cancellation token');
+        }
         final offer = IncomingOffer(id: randomHex(24),
           peerName: sender.length > 36 ? sender.substring(0, 36) : sender,
           sourceIp: req.connectionInfo?.remoteAddress.address ?? '', files: files);
