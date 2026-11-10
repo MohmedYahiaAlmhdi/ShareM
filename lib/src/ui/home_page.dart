@@ -324,8 +324,7 @@ class _ShareMHomePageState extends State<ShareMHomePage> {
                           leading: const CircleAvatar(
                             child: Icon(Icons.phone_android_rounded)),
                           title: Text(peer.name),
-                          subtitle: Text(peer.endpoint,
-                            textDirection: TextDirection.ltr),
+                          subtitle: const Text('متاح على الشبكة المحلية'),
                           trailing: const Icon(Icons.arrow_back_ios_new_rounded),
                           onTap: () {
                             Navigator.pop(ctx);
@@ -395,8 +394,7 @@ class _ShareMHomePageState extends State<ShareMHomePage> {
                   : _page == 1 ? _historyPage()
                   : _page == 2 ? _settingsPage()
                   : PairingPage(service: service, wifiDirect: wifiDirect,
-                      autoShowQr: _autoShowReceiveQr,
-                      ),
+                      autoShowQr: _autoShowReceiveQr),
             ),
           ),
         ))),
@@ -415,7 +413,7 @@ class _ShareMHomePageState extends State<ShareMHomePage> {
           NavigationDestination(icon: Icon(Icons.tune_outlined),
             selectedIcon: Icon(Icons.tune_rounded), label: 'الإعدادات'),
           NavigationDestination(icon: Icon(Icons.qr_code_scanner_outlined),
-            selectedIcon: Icon(Icons.qr_code_scanner_rounded), label: 'الاقتران'),
+            selectedIcon: Icon(Icons.qr_code_scanner_rounded), label: 'الأجهزة'),
         ],
       ),
     );
