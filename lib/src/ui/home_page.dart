@@ -382,6 +382,7 @@ class _ShareMHomePageState extends State<ShareMHomePage> {
                   : _page == 1 ? _historyPage()
                   : _page == 2 ? _settingsPage()
                   : PairingPage(service: service, wifiDirect: wifiDirect,
+                      autoShowQr: _autoShowReceiveQr,
                       onManualConnect: _manualConnect),
             ),
           ),
