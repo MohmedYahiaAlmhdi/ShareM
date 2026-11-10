@@ -1,4 +1,7 @@
 import 'dart:async';
+import 'dart:io';
+import 'package:cross_file/cross_file.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import '../core/lan_transfer_service.dart';
@@ -503,6 +506,32 @@ class _ShareMHomePageState extends State<ShareMHomePage> {
       ])),
   );
 
+  Future<void> _exportReceived(TransferEntry entry) async {
+    if (Platform.isLinux) {
+      _message('مشاركة الملفات غير مدعومة من نافذة المشاركة في Linux بعد.');
+      return;
+    }
+    try {
+      final accessible = <XFile>[];
+      for (final filePath in entry.receivedPaths) {
+        if (await File(filePath).exists()) accessible.add(XFile(filePath));
+      }
+      if (accessible.isEmpty) {
+        _message('لم يتم العثور على الملفات. ربما نُقلت أو حُذفت.');
+        return;
+      }
+      if (!mounted) return;
+      final size = MediaQuery.sizeOf(context);
+      final origin = Rect.fromLTWH(size.width / 2, size.height / 2, 1, 1);
+      await SharePlus.instance.share(ShareParams(
+        files: accessible,
+        sharePositionOrigin: origin,
+      ));
+    } catch (error) {
+      if (mounted) _message('تعذر تصدير الملفات: ' + error.toString());
+    }
+  }
+
   Widget _historyPage() => SingleChildScrollView(
     padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 27),
     child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -578,6 +607,15 @@ class _ShareMHomePageState extends State<ShareMHomePage> {
           Padding(padding: const EdgeInsets.only(top: 8),
             child: Text(entry.error!, style:
               const TextStyle(fontSize: 11, color: Colors.deepOrange))),
+        if (!sending && entry.status == TransferStatus.completed &&
+            entry.receivedPaths.isNotEmpty)
+          Align(alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: () => _exportReceived(entry),
+              icon: const Icon(Icons.ios_share_rounded),
+              label: const Text('تصدير الملفات المستلمة'),
+            ),
+          ),
       ]),
     ));
   }

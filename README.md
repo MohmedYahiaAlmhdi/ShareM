@@ -13,12 +13,12 @@ The current transport is plain HTTP over local Wi-Fi; **not encrypted**. Use tru
 - Receiver approval before accepting incoming files
 - Multi-file streaming, per-file SHA-256 integrity checking, collision-safe file names
 - Progress indicator, outgoing cancellation, local nickname and transfer history
-- Incoming files stored in the app's documents/ShareM/Received folder
+- Incoming files stored in the app's documents/ShareM/Received folder, with OS share-sheet export for received files where supported
 - GitHub Actions checks including Flutter analysis, tests and Android debug APK
 
 ## Not implemented yet
 
-Wi-Fi Direct negotiation, automatic hotspots, QR camera pairing, Bluetooth transfers, encrypted sessions, browser client, folder trees, resume, background transfers, Android file-manager export, system share integration, full real-device testing and store-ready signed releases.
+Wi-Fi Direct negotiation, automatic hotspots, QR camera pairing, Bluetooth transfers, encrypted sessions, browser client, folder trees, resume, background transfers, Android public Downloads auto-save, full real-device testing and store-ready signed releases.
 
 ## Run the app
 

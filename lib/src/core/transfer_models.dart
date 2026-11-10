@@ -63,8 +63,10 @@ class TransferEntry {
     this.totalBytes = 0,
     this.doneBytes = 0,
     this.error,
+    List<String>? receivedPaths,
     DateTime? date,
-  }) : date = date ?? DateTime.now();
+  }) : receivedPaths = receivedPaths ?? <String>[],
+       date = date ?? DateTime.now();
 
   final String id;
   final String peerName;
@@ -75,6 +77,7 @@ class TransferEntry {
   int totalBytes;
   int doneBytes;
   String? error;
+  final List<String> receivedPaths;
   bool cancellationRequested = false;
 
   double get progress => totalBytes <= 0
@@ -96,6 +99,7 @@ class TransferEntry {
     'doneBytes': doneBytes,
     'date': date.toIso8601String(),
     'error': error,
+    'receivedPaths': receivedPaths,
   };
 
   static TransferEntry fromJson(Map<String, dynamic> json) => TransferEntry(
@@ -114,6 +118,7 @@ class TransferEntry {
     doneBytes: (json['doneBytes'] as num?)?.toInt() ?? 0,
     date: DateTime.tryParse(json['date'] as String? ?? '') ?? DateTime.now(),
     error: json['error'] as String?,
+    receivedPaths: (json['receivedPaths'] as List? ?? []).whereType<String>().toList(),
   );
 }
 

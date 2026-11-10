@@ -326,6 +326,7 @@ class LanTransferService extends ChangeNotifier {
       if (received != metadata.size) throw const FormatException('Incomplete upload');
       final hash = (await sha256.bind(output.openRead()).first).toString();
       if (hash != metadata.sha256) throw const FormatException('Hash mismatch');
+      entry.receivedPaths.add(output.path);
       offer.nextIndex++;
       if (offer.nextIndex == offer.files.length) {
         offer.status = 'completed'; entry.status = TransferStatus.completed;
