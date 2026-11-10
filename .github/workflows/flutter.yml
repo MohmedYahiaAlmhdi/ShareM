@@ -28,6 +28,13 @@ jobs:
         run: flutter build apk --release --split-per-abi --split-debug-info=build/symbols
       - name: Report optimized APK sizes
         run: ls -lh build/app/outputs/flutter-apk/*release.apk
+      - name: Preserve unsigned split APKs for offline signing verification
+        uses: actions/upload-artifact@v4
+        with:
+          name: ShareM-unsigned-release-ABIs
+          path: build/app/outputs/flutter-apk/*release.apk
+          retention-days: 7
+          if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:
           name: ShareM-android-debug
