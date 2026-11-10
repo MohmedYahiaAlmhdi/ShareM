@@ -400,7 +400,7 @@ class _ShareMHomePageState extends State<ShareMHomePage> {
         const Row(children: [
           Icon(Icons.wifi_tethering_rounded, color: Colors.white),
           SizedBox(width: 8),
-          Text('مشاركة محلية وآمنة من السحابة',
+          Text('مشاركة دون خوادم أو حساب',
             style: TextStyle(color: Colors.white70, fontSize: 12,
               fontWeight: FontWeight.w700)),
         ]),
