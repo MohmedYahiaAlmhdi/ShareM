@@ -1,0 +1,31 @@
+name: Flutter CI
+on:
+  push:
+    branches: [main, "feat/**"]
+  pull_request:
+  workflow_dispatch:
+jobs:
+  analyze-test-apk:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Generate native projects and LAN permissions
+        run: python3 tool/bootstrap.py
+      - run: flutter pub get
+      - name: Static analysis
+        run: flutter analyze
+      - name: Tests
+        run: flutter test
+      - name: Android APK (debug build)
+        run: flutter build apk --debug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ShareM-android-debug
+          path: build/app/outputs/flutter-apk/app-debug.apk
+          if-no-files-found: error
