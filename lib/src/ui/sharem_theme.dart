@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 
 class ShareMTheme {
-  static const teal = Color(0xFF087C78);
-  static const mint = Color(0xFF2EC9AD);
-  static const ink = Color(0xFF142B35);
-  static const ice = Color(0xFFF2F8F8);
+  static const teal = Color(0xFF089C9B);
+  static const mint = Color(0xFF3DDCCD);
+  static const ink = Color(0xFF163348);
+  static const ice = Color(0xFFF3F9FC);
 
   static ThemeData get light {
     final scheme = ColorScheme.fromSeed(
@@ -34,13 +34,13 @@ class ShareMTheme {
         surfaceTintColor: Colors.white,
         elevation: 0,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(24),
-          side: const BorderSide(color: Color(0xFFE2EEEE)),
+          borderRadius: BorderRadius.circular(23),
+          side: const BorderSide(color: Color(0xFFE8F0F5)),
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: const Color(0xFFF3F8F8),
+        fillColor: const Color(0xFFF0F7FA),
         contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(17),

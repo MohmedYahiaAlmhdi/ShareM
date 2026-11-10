@@ -18,7 +18,7 @@ class ShareMApp extends StatelessWidget {
     debugShowCheckedModeBanner: false,
     theme: ShareMTheme.light,
     darkTheme: ShareMTheme.dark,
-    themeMode: ThemeMode.system,
+    themeMode: ThemeMode.light,
     home: Directionality(
       textDirection: TextDirection.rtl,
       child: ShareMHomePage(service: service),
