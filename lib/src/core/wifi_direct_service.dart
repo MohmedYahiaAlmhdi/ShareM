@@ -42,7 +42,7 @@ class WifiDirectService extends ChangeNotifier {
       _notify();
       if (available) await refresh();
     } on PlatformException catch (e) {
-      error = e.message ?? e.code;
+      error = _describeError(e);
       _notify();
     } on MissingPluginException {
       error = 'Wi-Fi Direct native module is not installed on this build.';
@@ -55,7 +55,7 @@ class WifiDirectService extends ChangeNotifier {
     try {
       await _methods.invokeMethod<void>('refresh');
     } on PlatformException catch (e) {
-      error = e.message ?? e.code; _notify();
+      error = _describeError(e); _notify();
     }
   }
 
@@ -66,10 +66,10 @@ class WifiDirectService extends ChangeNotifier {
     _notify();
     try {
       final permission = await _methods.invokeMethod<bool>('requestPermission');
-      if (permission != true) throw StateError('Nearby Wi-Fi permission was denied');
+      if (permission != true) throw StateError('يرجى منح ShareM إذن الأجهزة القريبة في إعدادات Android.');
       await _methods.invokeMethod<void>('discover');
     } catch (e) {
-      error = e.toString();
+      error = _describeError(e);
     } finally {
       busy = false; _notify();
     }
@@ -78,14 +78,14 @@ class WifiDirectService extends ChangeNotifier {
   Future<void> connect(String peerAddress) async {
     if (!canScan || busy) return;
     if (!peers.any((peer) => peer.address == peerAddress)) {
-      error = 'Device no longer appears in Wi-Fi Direct discovery';
+      error = 'الجهاز لم يعد ظاهرًا في البحث. حاول البحث من جديد.';
       _notify();
       return;
     }
     busy = true; error = null; _notify();
     try {
       final permission = await _methods.invokeMethod<bool>('requestPermission');
-      if (permission != true) throw StateError('Nearby Wi-Fi permission was denied');
+      if (permission != true) throw StateError('يرجى منح إذن الأجهزة القريبة في Android.');
       await _methods.invokeMethod<void>('connect', {'address': peerAddress});
     } catch (e) {
       error = e.toString();
@@ -99,7 +99,7 @@ class WifiDirectService extends ChangeNotifier {
     try {
       await _methods.invokeMethod<void>('disconnect');
     } catch (e) {
-      error = e.toString(); _notify();
+      error = _describeError(e); _notify();
     }
   }
 
@@ -127,6 +127,25 @@ class WifiDirectService extends ChangeNotifier {
       error = raw['message'] as String? ?? 'Wi-Fi Direct error';
     }
     _notify();
+  }
+
+  static String _describeError(Object exception) {
+    if (exception is PlatformException) {
+      switch (exception.code) {
+        case 'location':
+          return 'فعّل خدمات الموقع في إعدادات Android ليعمل اكتشاف Wi-Fi Direct.';
+        case 'permission':
+          return 'امنح ShareM إذن الأجهزة القريبة ثم أعد البحث.';
+        case 'unsupported':
+          return 'هذا الهاتف لا يدعم Wi-Fi Direct. استخدم شبكة Wi-Fi مشتركة وQR.';
+        case 'wifi_p2p_2':
+          return 'Wi-Fi مشغول أو غير جاهز. فعّله ثم حاول البحث مجددًا.';
+        default:
+          return exception.message ?? 'تعذر البحث عن الأجهزة القريبة.';
+      }
+    }
+    if (exception is StateError) return exception.message.toString();
+    return 'تعذر الاتصال بالأجهزة القريبة. تحقق من Wi-Fi والأذونات.';
   }
 
   void _notify() { if (!_disposed) notifyListeners(); }
