@@ -17,6 +17,7 @@ class LanTransferService extends ChangeNotifier {
   final history = <TransferEntry>[];
   final _offers = <String, IncomingOffer>{};
   final _uploads = <String, HttpClientRequest>{};
+  final _receivingOffers = <String>{};
   HttpServer? _server;
   RawDatagramSocket? _socket;
   Timer? _heartbeat;
@@ -280,14 +281,21 @@ class LanTransferService extends ChangeNotifier {
         final index = int.tryParse(route[3]);
         if (offer == null || index == null || index < 0 ||
             index >= offer.files.length || offer.status != 'accepted' ||
-            index != offer.nextIndex || !_sameSender(req, offer) ||
+            index != offer.nextIndex || _receivingOffers.contains(offer.id) ||
+            !_sameSender(req, offer) ||
             req.headers.value('X-ShareM-Token') != offer.token) {
           _reply(req, 403, {'error': 'Unauthorized'}); return;
         }
         if (req.contentLength != offer.files[index].size) {
           _reply(req, 400, {'error': 'Size mismatch'}); return;
         }
-        await _receive(req, offer, index); return;
+        _receivingOffers.add(offer.id);
+        try {
+          await _receive(req, offer, index);
+        } finally {
+          _receivingOffers.remove(offer.id);
+        }
+        return;
       }
       _reply(req, 404, {'error': 'Not found'});
     } on FormatException catch (e) {
