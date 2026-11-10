@@ -91,7 +91,8 @@ if gradle_path.exists():
             '  }\n'
             '}\n\n'
         )
-        gradle = signing + gradle
+        # Kotlin Gradle's plugins{} block must precede top-level declarations.
+        gradle = gradle.replace("android {", signing + "android {", 1)
         gradle = gradle.replace(
             "android {",
             'android {\n'
