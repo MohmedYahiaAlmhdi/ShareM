@@ -187,7 +187,7 @@ class LanTransferService extends ChangeNotifier {
           token = status['token'] as String?; break;
         }
       }
-      if (token == null) throw const TimeoutException('Receiver did not accept');
+      if (token == null) throw TimeoutException('Receiver did not accept');
       entry.status = TransferStatus.transferring; changed();
       for (var i = 0; i < files.length; i++) {
         _check(entry);
