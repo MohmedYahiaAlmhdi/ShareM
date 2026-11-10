@@ -11,6 +11,7 @@ import 'update_card.dart';
 import 'pairing_page.dart';
 import 'sharem_theme.dart';
 import 'premium_dashboard.dart';
+import 'received_files_page.dart';
 
 class ShareMHomePage extends StatefulWidget {
   const ShareMHomePage({super.key, required this.service});
@@ -31,6 +32,7 @@ class _ShareMHomePageState extends State<ShareMHomePage> {
   bool _autoShowReceiveQr = false;
   int _lastAutoPickerPeerCount = 0;
   TransferDirection? _historyFilter;
+  bool _showReceivedFiles = false;
 
   LanTransferService get service => widget.service;
 
@@ -413,7 +415,7 @@ class _ShareMHomePageState extends State<ShareMHomePage> {
           NavigationDestination(icon: Icon(Icons.home_outlined),
             selectedIcon: Icon(Icons.home_rounded), label: 'الرئيسية'),
           NavigationDestination(icon: Icon(Icons.swap_horiz_outlined),
-            selectedIcon: Icon(Icons.swap_horiz_rounded), label: 'العمليات'),
+            selectedIcon: Icon(Icons.swap_horiz_rounded), label: 'الملفات'),
           NavigationDestination(icon: Icon(Icons.tune_outlined),
             selectedIcon: Icon(Icons.tune_rounded), label: 'الإعدادات'),
           NavigationDestination(icon: Icon(Icons.qr_code_scanner_outlined),
@@ -562,6 +564,18 @@ class _ShareMHomePageState extends State<ShareMHomePage> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _pageHeader('عمليات النقل', 'تابع الملفات المرسلة والمستقبلة'),
+          OutlinedButton.icon(
+            onPressed: () => setState(
+              () => _showReceivedFiles = !_showReceivedFiles),
+            icon: Icon(_showReceivedFiles
+              ? Icons.history_rounded : Icons.folder_open_rounded),
+            label: Text(_showReceivedFiles
+              ? 'عرض سجل عمليات النقل' : 'استعراض الملفات المستلمة'),
+          ),
+          const SizedBox(height: 14),
+          if (_showReceivedFiles)
+            const ReceivedFilesPage()
+          else ...[
           Wrap(spacing: 8, runSpacing: 8, children: [
             ChoiceChip(
               label: const Text('الكل'),
@@ -584,6 +598,7 @@ class _ShareMHomePageState extends State<ShareMHomePage> {
               Icons.inventory_2_outlined, ShareMTheme.teal)
           else
             for (final entry in entries) _transferTile(entry),
+          ],
         ]),
     );
   }
