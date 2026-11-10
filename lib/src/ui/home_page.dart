@@ -29,6 +29,7 @@ class _ShareMHomePageState extends State<ShareMHomePage> {
   List<PlatformFile> _selectedFiles = [];
   bool _showingDevicePicker = false;
   bool _autoShowReceiveQr = false;
+  int _lastAutoPickerPeerCount = 0;
 
   LanTransferService get service => widget.service;
 
@@ -94,8 +95,10 @@ class _ShareMHomePageState extends State<ShareMHomePage> {
   void _onChange() {
     if (!mounted) return;
     setState(() {});
-    if (_selectedFiles.isNotEmpty && service.peers.isNotEmpty &&
+    if (_selectedFiles.isNotEmpty &&
+        service.peers.length > _lastAutoPickerPeerCount &&
         _page == 3 && !_showingDevicePicker) {
+      _lastAutoPickerPeerCount = service.peers.length;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && !_showingDevicePicker) _chooseDevice();
       });
@@ -251,7 +254,10 @@ class _ShareMHomePageState extends State<ShareMHomePage> {
       final files = await FilePicker.pickFiles(
         type: type, allowedExtensions: extensions);
       if (files.isEmpty || !mounted) return;
-      setState(() => _selectedFiles = files);
+      setState(() {
+        _selectedFiles = files;
+        _lastAutoPickerPeerCount = service.peers.length;
+      });
       await _chooseDevice();
     } catch (e) {
       if (mounted) _message('تعذر اختيار الملفات: ' + e.toString());
