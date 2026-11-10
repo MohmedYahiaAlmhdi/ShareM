@@ -104,22 +104,46 @@ class LanTransferService extends ChangeNotifier {
     }
   }
 
+  /// Prefer reachable Wi-Fi and P2P interfaces, not VPN/cellular IPs.
   Future<void> refreshLocalAddress() async {
     try {
       final networks = await NetworkInterface.list(
-        type: InternetAddressType.IPv4, includeLoopback: false,
-      );
-      final addresses = networks.expand((e) => e.addresses)
-          .map((a) => a.address)
-          .where((a) => !a.startsWith('169.254.'))
-          .toList();
-      if (addresses.isEmpty) return;
-      // Prefer the Wi-Fi Direct subnet while a P2P group is active.
-      localAddress = addresses.firstWhere(
-        (a) => a.startsWith('192.168.49.'), orElse: () => addresses.first,
-      );
+        type: InternetAddressType.IPv4, includeLoopback: false);
+      String? direct, wifi, wired;
+      for (final n in networks) {
+        final name = n.name.toLowerCase();
+        if (name.startsWith('tun') || name.startsWith('utun') ||
+            name.startsWith('rmnet') || name.startsWith('ccmni') ||
+            name.startsWith('pdp') || name.startsWith('lo')) continue;
+        for (final address in n.addresses) {
+          final ip = address.address;
+          if (!_privateIpv4(ip)) continue;
+          if (name.startsWith('p2p') || ip.startsWith('192.168.49.')) {
+            direct ??= ip;
+          } else if (name.startsWith('wlan') ||
+                     name.startsWith('wifi') || name.startsWith('swlan') ||
+                     name.startsWith('ap')) {
+            wifi ??= ip;
+          } else if (name.startsWith('eth') || name.startsWith('en')) {
+            wired ??= ip;
+          }
+        }
+      }
+      localAddress = direct ?? wifi ?? wired ?? '—';
       changed();
-    } catch (_) {}
+    } catch (_) {
+      localAddress = '—';
+      changed();
+    }
+  }
+
+  static bool _privateIpv4(String host) {
+    final items = host.split('.').map(int.tryParse).toList();
+    if (items.length != 4 ||
+        items.any((x) => x == null || x < 0 || x > 255)) return false;
+    final first = items[0]!, second = items[1]!;
+    return first == 10 || first == 192 && second == 168 ||
+      first == 172 && second >= 16 && second <= 31;
   }
 
   Future<void> rename(String value) async {
@@ -169,6 +193,30 @@ class LanTransferService extends ChangeNotifier {
       }
       _upsert(NearbyDevice(id: json['id'] as String, name: json['name'] as String,
         host: uri.host, port: uri.port));
+    } finally { client.close(force: true); }
+  }
+
+  /// Announce the P2P client to its group owner; this is discovery only.
+  /// Transferring files still requires explicit receiver approval.
+  Future<void> introduceToGroupOwner(String host) async {
+    if (!running || port <= 0) return;
+    final bytes = utf8.encode(jsonEncode({
+      'app': 'ShareM', 'v': 1,
+      'id': deviceId, 'name': deviceName, 'port': port,
+    }));
+    final client = _client();
+    try {
+      final req = await client.postUrl(Uri(
+        scheme: 'http', host: host, port: transferPort,
+        path: '/v1/introduce')).timeout(const Duration(seconds: 6));
+      req.headers.contentType = ContentType.json;
+      req.contentLength = bytes.length;
+      req.add(bytes);
+      final res = await req.close().timeout(const Duration(seconds: 8));
+      if (res.statusCode != 200) {
+        throw const HttpException('Could not introduce device');
+      }
+      await res.drain<void>();
     } finally { client.close(force: true); }
   }
 
@@ -269,6 +317,31 @@ class LanTransferService extends ChangeNotifier {
       if (req.method == 'GET' && req.uri.path == '/v1/hello') {
         _reply(req, 200, {'app': 'ShareM', 'v': 1, 'id': deviceId, 'name': deviceName});
         return;
+      }
+      if (req.method == 'POST' && req.uri.path == '/v1/introduce') {
+        if (req.contentLength < 1 || req.contentLength > 1024) {
+          _reply(req, 413, {'error': 'Too large'}); return;
+        }
+        final raw = await utf8.decoder.bind(req).join();
+        if (raw.length > 1024) throw const FormatException('Too large');
+        final body = jsonDecode(raw);
+        if (body is! Map || body['app'] != 'ShareM' || body['v'] != 1 ||
+            body['id'] is! String || body['name'] is! String ||
+            body['port'] is! int) {
+          throw const FormatException('Invalid discovery message');
+        }
+        final id = body['id'] as String;
+        final name = (body['name'] as String).trim();
+        final remotePort = body['port'] as int;
+        final remote = req.connectionInfo?.remoteAddress.address;
+        if (id.isEmpty || id.length > 80 || id == deviceId ||
+            name.isEmpty || name.length > 36 || remotePort < 1 ||
+            remotePort > 65535 || remote == null || !_privateIpv4(remote)) {
+          throw const FormatException('Invalid P2P device');
+        }
+        _upsert(NearbyDevice(id: id, name: name, host: remote,
+          port: remotePort));
+        _reply(req, 200, {'ok': true}); return;
       }
       if (req.method == 'POST' && req.uri.path == '/v1/offer') {
         if (incomingOffer != null) { _reply(req, 409, {'error': 'Busy'}); return; }
