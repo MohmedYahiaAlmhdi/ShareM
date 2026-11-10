@@ -28,6 +28,7 @@ class _ShareMHomePageState extends State<ShareMHomePage> {
   String? _connectedDirectIp;
   List<PlatformFile> _selectedFiles = [];
   bool _showingDevicePicker = false;
+  bool _autoShowReceiveQr = false;
 
   LanTransferService get service => widget.service;
 
@@ -327,7 +328,10 @@ class _ShareMHomePageState extends State<ShareMHomePage> {
               FilledButton.icon(
                 onPressed: () {
                   Navigator.pop(ctx);
-                  setState(() => _page = 3);
+                  setState(() {
+                    _autoShowReceiveQr = false;
+                    _page = 3;
+                  });
                 },
                 icon: const Icon(Icons.qr_code_scanner_rounded),
                 label: const Text('QR أو Wi-Fi Direct')),
@@ -385,7 +389,10 @@ class _ShareMHomePageState extends State<ShareMHomePage> {
       ])),
       bottomNavigationBar: wide ? null : NavigationBar(
         selectedIndex: _page,
-        onDestinationSelected: (value) => setState(() => _page = value),
+        onDestinationSelected: (value) => setState(() {
+          _page = value;
+          _autoShowReceiveQr = false;
+        }),
         destinations: const [
           NavigationDestination(icon: Icon(Icons.home_outlined),
             selectedIcon: Icon(Icons.home_rounded), label: 'الرئيسية'),
@@ -479,8 +486,14 @@ class _ShareMHomePageState extends State<ShareMHomePage> {
     history: service.history,
     error: service.startupError,
     onSend: _pickCategory,
-    onReceive: () => setState(() => _page = 3),
-    onPair: () => setState(() => _page = 3),
+    onReceive: () => setState(() {
+      _autoShowReceiveQr = true;
+      _page = 3;
+    }),
+    onPair: () => setState(() {
+      _autoShowReceiveQr = false;
+      _page = 3;
+    }),
     onHistory: () => setState(() => _page = 1),
     onSettings: () => setState(() => _page = 2),
     onRefresh: service.refresh,

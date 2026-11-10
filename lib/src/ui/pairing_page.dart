@@ -12,10 +12,12 @@ import 'sharem_theme.dart';
 
 class PairingPage extends StatefulWidget {
   const PairingPage({super.key, required this.service,
-    required this.wifiDirect, required this.onManualConnect});
+    required this.wifiDirect, required this.onManualConnect,
+    this.autoShowQr = false});
   final LanTransferService service;
   final WifiDirectService wifiDirect;
   final VoidCallback onManualConnect;
+  final bool autoShowQr;
 
   @override
   State<PairingPage> createState() => _PairingPageState();
@@ -23,6 +25,16 @@ class PairingPage extends StatefulWidget {
 
 class _PairingPageState extends State<PairingPage> {
   bool _connectingQr = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.autoShowQr) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _showQr();
+      });
+    }
+  }
 
   Future<void> _showQr() async {
     await widget.service.refreshLocalAddress();
