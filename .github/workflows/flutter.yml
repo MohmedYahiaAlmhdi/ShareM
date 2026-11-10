@@ -24,6 +24,10 @@ jobs:
         run: flutter test
       - name: Android APK (debug build)
         run: flutter build apk --debug
+      - name: Compile optimized release variants (unsigned smoke test)
+        run: flutter build apk --release --split-per-abi --split-debug-info=build/symbols
+      - name: Report optimized APK sizes
+        run: ls -lh build/app/outputs/flutter-apk/*release.apk
       - uses: actions/upload-artifact@v4
         with:
           name: ShareM-android-debug
