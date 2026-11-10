@@ -39,8 +39,7 @@ class _ShareMHomePageState extends State<ShareMHomePage> {
     service.addListener(_onChange);
     wifiDirect.addListener(_onDirectChange);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      service.start();
-      wifiDirect.initialize();
+      unawaited(_initializeNetworking());
       unawaited(updates.check());
     });
   }
@@ -55,6 +54,48 @@ class _ShareMHomePageState extends State<ShareMHomePage> {
   }
 
 
+  Future<void> _initializeNetworking() async {
+    try {
+      await service.start();
+      await wifiDirect.initialize();
+      if (mounted && wifiDirect.canScan) {
+        await wifiDirect.discover();
+      }
+    } catch (e) {
+      if (mounted) _message('تعذر بدء البحث عن الأجهزة: ' + e.toString());
+    }
+  }
+
+  Future<void> _searchNearby() async {
+    service.refresh();
+    if (wifiDirect.canScan && !wifiDirect.busy) {
+      await wifiDirect.discover();
+    }
+    if (wifiDirect.error != null && mounted) {
+      _message('البحث: ' + wifiDirect.error!);
+    }
+  }
+
+  Future<void> _connectDirectPeer(WifiDirectPeer peer) async {
+    if (wifiDirect.busy || wifiDirect.connected) return;
+    await wifiDirect.connect(peer.address);
+    if (!mounted) return;
+    if (wifiDirect.error != null) {
+      _message('تعذّر اتصال Wi-Fi Direct: ' + wifiDirect.error!);
+    } else {
+      _message('جارٍ الاتصال بـ ' + peer.name +
+        '… وافق على الاتصال من الجهاز الآخر عند الطلب.');
+    }
+  }
+
+  void _openPairing({bool receive = false}) {
+    setState(() {
+      _autoShowReceiveQr = receive;
+      _page = 3;
+    });
+    unawaited(_searchNearby());
+  }
+
   void _onDirectChange() {
     if (!mounted) return;
     setState(() {});
@@ -63,6 +104,7 @@ class _ShareMHomePageState extends State<ShareMHomePage> {
       _connectedDirectIp = null;
       return;
     }
+    unawaited(service.refreshLocalAddress());
     if (wifiDirect.groupOwner || ip == null || ip.isEmpty ||
         _connectedDirectIp == ip) return;
     _connectedDirectIp = ip;
@@ -78,6 +120,7 @@ class _ShareMHomePageState extends State<ShareMHomePage> {
           await service.addManualPeer(
             ip + ':' + LanTransferService.transferPort.toString(),
           );
+          await service.introduceToGroupOwner(ip);
           if (mounted) {
             _message('اتصل ShareM بالمضيف عبر Wi-Fi Direct. اختر الملفات للإرسال.');
           }
@@ -165,44 +208,6 @@ class _ShareMHomePageState extends State<ShareMHomePage> {
         ),
       ),
     );
-  }
-
-  Future<void> _manualConnect() async {
-    final controller = TextEditingController();
-    final value = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('الاتصال بعنوان الجهاز'),
-        content: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Text('أدخل العنوان الظاهر في ShareM على الجهاز الآخر.'),
-          const SizedBox(height: 16),
-          Directionality(textDirection: TextDirection.ltr,
-            child: TextField(
-              controller: controller,
-              autofocus: true,
-              decoration: const InputDecoration(
-                hintText: '192.168.1.12:54321',
-                prefixIcon: Icon(Icons.link_rounded),
-              ),
-              keyboardType: TextInputType.url,
-            )),
-        ]),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx),
-            child: const Text('إلغاء')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, controller.text),
-            child: const Text('اتصال')),
-        ],
-      ),
-    );
-    controller.dispose();
-    if (value == null || value.trim().isEmpty) return;
-    try {
-      await service.addManualPeer(value);
-      if (mounted) _message('تم العثور على الجهاز بنجاح');
-    } catch (e) {
-      if (mounted) _message('تعذر الاتصال: ' + e.toString());
-    }
   }
 
   Future<void> _rename() async {
@@ -300,7 +305,7 @@ class _ShareMHomePageState extends State<ShareMHomePage> {
                 style: const TextStyle(
                   fontSize: 20, fontWeight: FontWeight.w900)),
               const SizedBox(height: 16),
-              if (service.peers.isEmpty) ...[
+              if (service.peers.isEmpty && wifiDirect.peers.isEmpty) ...[
                 const Icon(Icons.wifi_tethering_rounded,
                   size: 55, color: ShareMTheme.teal),
                 const SizedBox(height: 11),
@@ -330,24 +335,26 @@ class _ShareMHomePageState extends State<ShareMHomePage> {
                     ],
                   ),
                 ),
+              for (final peer in wifiDirect.peers)
+                Card(child: ListTile(
+                  leading: const CircleAvatar(
+                    child: Icon(Icons.wifi_tethering_rounded)),
+                  title: Text(peer.name),
+                  subtitle: const Text('Wi-Fi Direct • بدون راوتر'),
+                  trailing: const Icon(Icons.chevron_left_rounded),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    unawaited(_connectDirectPeer(peer));
+                  },
+                )),
               const SizedBox(height: 11),
               FilledButton.icon(
                 onPressed: () {
                   Navigator.pop(ctx);
-                  setState(() {
-                    _autoShowReceiveQr = false;
-                    _page = 3;
-                  });
+                  _openPairing();
                 },
                 icon: const Icon(Icons.qr_code_scanner_rounded),
                 label: const Text('QR أو Wi-Fi Direct')),
-              TextButton.icon(
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  _manualConnect();
-                },
-                icon: const Icon(Icons.add_link_rounded),
-                label: const Text('اتصال يدوي')),
               if (_selectedFiles.isNotEmpty)
                 TextButton(
                   onPressed: () {
@@ -389,7 +396,7 @@ class _ShareMHomePageState extends State<ShareMHomePage> {
                   : _page == 2 ? _settingsPage()
                   : PairingPage(service: service, wifiDirect: wifiDirect,
                       autoShowQr: _autoShowReceiveQr,
-                      onManualConnect: _manualConnect),
+                      ),
             ),
           ),
         ))),
@@ -479,7 +486,7 @@ class _ShareMHomePageState extends State<ShareMHomePage> {
             fontSize: 12)),
         ])),
       IconButton(
-        onPressed: service.refresh,
+        onPressed: () => unawaited(_searchNearby()),
         tooltip: 'تحديث البحث',
         icon: const Icon(Icons.refresh_rounded),
       ),
@@ -493,18 +500,17 @@ class _ShareMHomePageState extends State<ShareMHomePage> {
     history: service.history,
     error: service.startupError,
     onSend: _pickCategory,
-    onReceive: () => setState(() {
-      _autoShowReceiveQr = true;
-      _page = 3;
-    }),
-    onPair: () => setState(() {
-      _autoShowReceiveQr = false;
-      _page = 3;
-    }),
+    onReceive: () => _openPairing(receive: true),
+    onPair: _openPairing,
     onHistory: () => setState(() => _page = 1),
     onSettings: () => setState(() => _page = 2),
-    onRefresh: service.refresh,
+    onRefresh: () => unawaited(_searchNearby()),
     onPeer: _sendTo,
+    directPeers: wifiDirect.peers,
+    directAvailable: wifiDirect.canScan,
+    directBusy: wifiDirect.busy,
+    directConnected: wifiDirect.connected,
+    onDirectPeer: (peer) => unawaited(_connectDirectPeer(peer)),
   );
 
   Widget _notice(String message, IconData icon, Color color) => Card(
@@ -633,11 +639,11 @@ class _ShareMHomePageState extends State<ShareMHomePage> {
   Widget _settingsPage() => SingleChildScrollView(
     padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 27),
     child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      _pageHeader('الجهاز والاستقبال', 'معلومات الاتصال وإعدادات ShareM'),
+      _pageHeader('الجهاز والاستقبال', 'معلومات وإعدادات ShareM'),
       UpdateCard(updates: updates),
       const SizedBox(height: 18),
       FilledButton.icon(
-        onPressed: () => setState(() => _page = 3),
+        onPressed: _openPairing,
         icon: const Icon(Icons.qr_code_rounded),
         label: const Text('إظهار QR أو البحث بـ Wi-Fi Direct'),
       ),
@@ -648,10 +654,9 @@ class _ShareMHomePageState extends State<ShareMHomePage> {
           _infoRow(Icons.phone_android_rounded, 'اسم هذا الجهاز',
             service.deviceName, _rename),
           const Divider(height: 30),
-          _infoRow(Icons.wifi_rounded, 'عنوان الاتصال المحلي',
-            service.running
-              ? service.localAddress + ':' + service.port.toString()
-              : 'جاري بدء الخدمة', null),
+          _infoRow(Icons.wifi_rounded, 'حالة الاستقبال',
+            service.running ? 'جاهز للاتصال بالأجهزة القريبة'
+              : 'جارٍ بدء الخدمة', null),
           const Divider(height: 30),
           _infoRow(Icons.folder_copy_outlined, 'حفظ الملفات الواردة',
             'مستندات التطبيق / ShareM / Received', null),
@@ -663,13 +668,8 @@ class _ShareMHomePageState extends State<ShareMHomePage> {
         'استخدم شبكة موثوقة فقط.', Icons.info_outline,
         ShareMTheme.teal),
       const SizedBox(height: 15),
-      OutlinedButton.icon(
-        onPressed: _manualConnect,
-        icon: const Icon(Icons.add_link_rounded),
-        label: const Text('الاتصال يدويًا بجهاز'),
-      ),
       const SizedBox(height: 20),
-      const Text('ShareM • إصدار تجريبي 0.4.0',
+      const Text('ShareM • إصدار تجريبي 0.5.0',
         textAlign: TextAlign.center,
         style: TextStyle(fontSize: 12, color: Colors.grey)),
     ]),
