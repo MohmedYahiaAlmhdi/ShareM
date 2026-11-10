@@ -49,6 +49,7 @@ if not any(element.attrib.get(f"{{{ns}}}name") == "android.hardware.wifi.direct"
 application = root.find("application")
 if application is not None:
     application.set(f"{{{ns}}}usesCleartextTraffic", "true")
+    application.set(f"{{{ns}}}label", "ShareM")
 tree.write(android, encoding="utf-8", xml_declaration=True)
 native_source = ROOT / "native/android/MainActivity.kt"
 native_target = ROOT / "android/app/src/main/kotlin/com/yahia/sharem/MainActivity.kt"
@@ -66,6 +67,7 @@ if ios.exists():
         "ShareM discovers nearby devices and transfers files on your local network."
     )
     data["NSAppTransportSecurity"] = {"NSAllowsLocalNetworking": True}
+    data["CFBundleDisplayName"] = "ShareM"
     data["UIFileSharingEnabled"] = True
     data["LSSupportsOpeningDocumentsInPlace"] = True
     with ios.open("wb") as handle:
