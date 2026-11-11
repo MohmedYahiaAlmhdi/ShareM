@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -85,4 +86,51 @@ void main() {
     );
     expect(await File(path).length(), 0);
   });
+  test('final file is invisible until all bytes arrive and are verified', () async {
+    final firstChunkWritten = Completer<void>();
+    final controller = StreamController<List<int>>();
+    final all = utf8.encode('reliable multi-chunk transfer');
+    final first = all.take(9).toList();
+    final remaining = all.skip(9).toList();
+
+    final pending = VerifiedFileWriter.receive(
+      directory: folder, metadata: manifest('safe.txt', all),
+      chunks: controller.stream,
+      onProgress: (_) {
+        if (!firstChunkWritten.isCompleted) firstChunkWritten.complete();
+      },
+    );
+    controller.add(first);
+    await firstChunkWritten.future;
+    final entries = await folder.list().toList();
+    expect(entries, hasLength(1));
+    expect(p.basename(entries.single.path), startsWith('.sharem-'));
+    expect(await File(p.join(folder.path, 'safe.txt')).exists(), false);
+
+    controller.add(remaining);
+    await controller.close();
+    final path = await pending;
+    expect(p.basename(path), 'safe.txt');
+    expect(await File(path).readAsBytes(), all);
+    expect((await folder.list().toList()).length, 1);
+  });
+
+  test('large transfer streams hundreds of chunks without corruption', () async {
+    const chunkSize = 8192;
+    const chunkCount = 256;
+    final chunks = List.generate(
+      chunkCount, (i) => List<int>.filled(chunkSize, i % 251));
+    final data = chunks.expand((b) => b).toList();
+    var progress = 0;
+    final path = await VerifiedFileWriter.receive(
+      directory: folder, metadata: manifest('archive.bin', data),
+      chunks: Stream.fromIterable(chunks),
+      onProgress: (n) => progress += n,
+    );
+    expect(await File(path).length(), chunkSize * chunkCount);
+    expect(progress, data.length);
+    expect(sha256.convert(await File(path).readAsBytes()).toString(),
+      sha256.convert(data).toString());
+  });
+
 }
