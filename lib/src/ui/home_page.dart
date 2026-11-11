@@ -810,7 +810,7 @@ class _ShareMHomePageState extends State<ShareMHomePage> {
         ShareMTheme.teal),
       const SizedBox(height: 15),
       const SizedBox(height: 20),
-      const Text('ShareM • إصدار تجريبي 0.7.0',
+      const Text('ShareM • إصدار تجريبي 0.8.0',
         textAlign: TextAlign.center,
         style: TextStyle(fontSize: 12, color: Colors.grey)),
     ]),
