@@ -20,25 +20,34 @@ class VerifiedFileWriter {
     await directory.create(recursive: true);
     final temporary = File(p.join(directory.path,
       '.sharem-' + randomHex(16) + '.part'));
-    IOSink? sink;
+    RandomAccessFile? opened;
     var count = 0;
     try {
-      sink = temporary.openWrite();
-      final digest = await sha256.bind(chunks.map((chunk) {
-        if (isCancelled?.call() ?? false) {
-          throw const TransferCancelledException();
+      final output = await temporary.open(mode: FileMode.write);
+      opened = output;
+
+      // Await each disk write before reading the next incoming chunk.
+      // This applies backpressure and avoids unbounded IOSink buffering when
+      // transfers are faster than local storage.
+      Stream<List<int>> checkedChunks() async* {
+        await for (final chunk in chunks) {
+          if (isCancelled?.call() ?? false) {
+            throw const TransferCancelledException();
+          }
+          count += chunk.length;
+          if (count > metadata.size) {
+            throw const FormatException('Incoming file is larger than expected');
+          }
+          await output.writeFrom(chunk);
+          onProgress(chunk.length);
+          yield chunk;
         }
-        count += chunk.length;
-        if (count > metadata.size) {
-          throw const FormatException('Incoming file is larger than expected');
-        }
-        sink!.add(chunk);
-        onProgress(chunk.length);
-        return chunk;
-      })).first;
-      await sink.flush();
-      await sink.close();
-      sink = null;
+      }
+
+      final digest = await sha256.bind(checkedChunks()).first;
+      await output.flush();
+      await output.close();
+      opened = null;
       if (isCancelled?.call() ?? false) {
         throw const TransferCancelledException();
       }
@@ -60,8 +69,8 @@ class VerifiedFileWriter {
       }
       return (await temporary.rename(candidate.path)).path;
     } catch (_) {
-      if (sink != null) {
-        try { await sink.close(); } catch (_) {}
+      if (opened != null) {
+        try { await opened.close(); } catch (_) {}
       }
       if (await temporary.exists()) {
         try { await temporary.delete(); } catch (_) {}
