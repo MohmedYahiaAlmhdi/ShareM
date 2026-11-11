@@ -237,7 +237,6 @@ void main() {
   });
 
   test('damaged saved history never stops LAN receiver', () async {
-    service.dispose();
     SharedPreferences.setMockInitialValues({
       'history': '{broken-json',
     });
