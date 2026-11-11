@@ -6,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../core/transfer_models.dart';
+import '../core/shared_files_inbox.dart';
 import 'sharem_theme.dart';
 
 bool isUserReceivedFile(String name) =>
@@ -27,6 +28,8 @@ class _ReceivedFile {
 
 class _ReceivedFilesPageState extends State<ReceivedFilesPage> {
   late Future<List<_ReceivedFile>> _files = _loadFiles();
+  String _search = '';
+  final _exporting = <String>{};
 
   Future<List<_ReceivedFile>> _loadFiles() async {
     final root = Directory(p.join(
@@ -65,6 +68,19 @@ class _ReceivedFilesPageState extends State<ReceivedFilesPage> {
       ));
     } catch (_) {
       if (mounted) _message('تعذّر مشاركة الملف. جرّب تحديث القائمة.');
+    }
+  }
+
+  Future<void> _saveToDownloads(File file) async {
+    if (_exporting.contains(file.path)) return;
+    setState(() => _exporting.add(file.path));
+    try {
+      await SharedFilesInbox.saveToDownloads(file.path);
+      _message('تم الحفظ في التنزيلات ← ShareM');
+    } catch (error) {
+      _message('تعذّر الحفظ في التنزيلات: ' + error.toString());
+    } finally {
+      if (mounted) setState(() => _exporting.remove(file.path));
     }
   }
 
@@ -127,6 +143,15 @@ class _ReceivedFilesPageState extends State<ReceivedFilesPage> {
           icon: const Icon(Icons.refresh_rounded)),
       ]),
       const SizedBox(height: 9),
+      TextField(
+        onChanged: (query) => setState(() => _search = query.trim().toLowerCase()),
+        textInputAction: TextInputAction.search,
+        decoration: const InputDecoration(
+          hintText: 'ابحث عن ملف مستلم',
+          prefixIcon: Icon(Icons.search_rounded),
+        ),
+      ),
+      const SizedBox(height: 10),
       FutureBuilder<List<_ReceivedFile>>(
         future: _files,
         builder: (context, snapshot) {
@@ -140,6 +165,9 @@ class _ReceivedFilesPageState extends State<ReceivedFilesPage> {
               child: Text('تعذّر قراءة الملفات. تحقق من مساحة التخزين.')));
           }
           final items = snapshot.data ?? [];
+          final displayed = items.where((item) =>
+            p.basename(item.file.path).toLowerCase().contains(_search))
+            .toList();
           if (items.isEmpty) {
             return const Card(child: Padding(
               padding: EdgeInsets.all(25),
@@ -152,8 +180,14 @@ class _ReceivedFilesPageState extends State<ReceivedFilesPage> {
                 Text('ستظهر الملفات هنا بعد قبول أول عملية استقبال.'),
               ])));
           }
+          if (displayed.isEmpty) {
+            return const Padding(
+              padding: EdgeInsets.all(20),
+              child: Text('لا توجد ملفات مطابقة لبحثك.'),
+            );
+          }
           return Column(children: [
-            for (final item in items)
+            for (final item in displayed)
               Card(child: ListTile(
                 leading: CircleAvatar(
                   backgroundColor: ShareMTheme.teal.withAlpha(20),
@@ -162,16 +196,39 @@ class _ReceivedFilesPageState extends State<ReceivedFilesPage> {
                 title: Text(p.basename(item.file.path),
                   maxLines: 1, overflow: TextOverflow.ellipsis),
                 subtitle: Text(humanSize(item.stat.size)),
-                trailing: Wrap(spacing: 0, children: [
-                  IconButton(
-                    tooltip: 'مشاركة الملف',
-                    onPressed: () => _share(item.file),
-                    icon: const Icon(Icons.ios_share_rounded)),
-                  IconButton(
-                    tooltip: 'حذف الملف',
-                    onPressed: () => _delete(item.file),
-                    icon: const Icon(Icons.delete_outline_rounded)),
-                ]),
+                onTap: () => _share(item.file),
+                trailing: _exporting.contains(item.file.path)
+                  ? const SizedBox(width: 24, height: 24,
+                      child: CircularProgressIndicator(strokeWidth: 2))
+                  : PopupMenuButton<String>(
+                    tooltip: 'خيارات الملف',
+                    onSelected: (choice) {
+                      if (choice == 'share') _share(item.file);
+                      if (choice == 'downloads') _saveToDownloads(item.file);
+                      if (choice == 'delete') _delete(item.file);
+                    },
+                    itemBuilder: (ctx) => [
+                      const PopupMenuItem(
+                        value: 'share',
+                        child: Row(children: [
+                          Icon(Icons.ios_share_rounded),
+                          SizedBox(width: 10), Text('مشاركة الملف'),
+                        ])),
+                      if (Platform.isAndroid)
+                        const PopupMenuItem(
+                          value: 'downloads',
+                          child: Row(children: [
+                            Icon(Icons.download_rounded),
+                            SizedBox(width: 10), Text('حفظ في التنزيلات'),
+                          ])),
+                      const PopupMenuItem(
+                        value: 'delete',
+                        child: Row(children: [
+                          Icon(Icons.delete_outline_rounded),
+                          SizedBox(width: 10), Text('حذف الملف'),
+                        ])),
+                    ],
+                  ),
               )),
           ]);
         },

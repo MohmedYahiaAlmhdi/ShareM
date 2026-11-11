@@ -33,6 +33,7 @@ class MainActivity : FlutterActivity(), MethodChannel.MethodCallHandler,
     EventChannel.StreamHandler {
 
     private var multicastLock: WifiManager.MulticastLock? = null
+    private var sharedFiles: SharedFileBridge? = null
     private var manager: WifiP2pManager? = null
     private var channel: WifiP2pManager.Channel? = null
     private var sink: EventChannel.EventSink? = null
@@ -89,6 +90,9 @@ class MainActivity : FlutterActivity(), MethodChannel.MethodCallHandler,
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        sharedFiles = SharedFileBridge(
+            this, flutterEngine.dartExecutor.binaryMessenger)
+        sharedFiles?.accept(intent)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger,
             "sharem/wifi_direct").setMethodCallHandler(this)
         EventChannel(flutterEngine.dartExecutor.binaryMessenger,
@@ -349,7 +353,15 @@ class MainActivity : FlutterActivity(), MethodChannel.MethodCallHandler,
         }
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        sharedFiles?.accept(intent)
+    }
+
     override fun onDestroy() {
+        sharedFiles?.close()
+        sharedFiles = null
         pendingPermission?.error("destroyed", "Activity closed", null)
         pendingPermission = null
         if (registeredReceiver) {

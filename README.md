@@ -2,8 +2,17 @@
 
 **ShareM** is an Arabic-first Flutter peer-to-peer LAN file sharing app with a teal Material 3 interface. It targets Android, iOS, Windows, macOS and Linux.
 
-**Status: 0.6.0 development prototype, not a production-ready alternative to SHAREit/ShareMe.**
+**Status: 0.7.0 development prototype, not a production-ready alternative to SHAREit/ShareMe.**
 The current transport is plain HTTP over local Wi-Fi; **not encrypted**. Use trusted networks only.
+
+## ShareM 0.7.0 Android Sharesheet + public Downloads
+
+- Android: From Photos, Files, and other apps, use **Share → ShareM** for one file or several files; the selection appears in ShareM's normal device chooser, and the receiver must approve
+- Android 10+: In **Received files**, select **Save to Downloads** to copy the verified file to public Downloads/ShareM using Android MediaStore. A file is hidden as pending until copying finishes
+- File manager now includes search and a compact Share / Save / Delete menu; private app copies are retained until explicitly deleted
+- Shared URI content is streamed to an app-private cache on a background thread, limited to 50 files / 2 GiB per file / 4 GiB per batch. Use ShareM's own picker for larger files
+- No broad Android storage permission is requested. The incoming external URI grant and MediaStore are used instead
+- These Android integration features require real-device acceptance tests. iOS and desktop share-target extensions are not implemented
 
 ## ShareM 0.6.0 transfer reliability update
 
@@ -38,7 +47,7 @@ The current transport is plain HTTP over local Wi-Fi; **not encrypted**. Use tru
 
 ## Not implemented yet
 
-Automatic hotspot setup, AirDrop interoperability, Bluetooth transfers, encrypted sessions, browser client, folder trees, resume, background transfers, Android public Downloads auto-save, full real-device testing and commercial store readiness.
+Automatic hotspot setup, AirDrop interoperability, Bluetooth transfers, encrypted sessions, browser client, folder trees, resume, background transfers, full real-device testing and commercial store readiness.
 
 ## Run the app
 
@@ -64,7 +73,7 @@ flutter build apk --debug
 
 ## Release builds and in-app updates
 
-Version **0.3.0+3** introduces Android update checking under **الإعدادات → تحديثات ShareM**. It checks the latest published GitHub Release's update.json, chooses a signed APK for the CPU ABI, validates size and SHA-256, and invokes Android's installer (requires user confirmation).
+Android's in-app updater first appeared in **0.3.0+3**. It still relies on **published GitHub Releases**; without release assets, the check shows a friendly not-yet-published state. This feature under **الإعدادات → تحديثات ShareM**. It checks the latest published GitHub Release's update.json, chooses a signed APK for the CPU ABI, validates size and SHA-256, and invokes Android's installer (requires user confirmation).
 
 To produce installable **signed release APKs** instead of debug builds, configure the four permanent signing secrets documented in [docs/releasing.md](docs/releasing.md). Then run **ShareM Signed Android Release** in GitHub Actions; this builds optimized split APKs for `arm64-v8a`, `armeabi-v7a`, and `x86_64`, and publishes matching update.json.
 
@@ -87,9 +96,9 @@ Open **الاقتران** on both devices. On the receiver choose **عرض رم�
 
 ## Test a transfer
 
-Open ShareM on two devices on the same Wi-Fi or hotspot; keep both apps open. Select the receiver in the nearby devices list, choose files and approve the incoming offer. If discovery is unavailable, copy the IP:port shown on the receiving device's settings screen and use manual connection.
+Open ShareM on two devices on the same Wi-Fi or hotspot; keep both apps open. Select the receiver in the nearby devices list, choose files and approve the incoming offer. If local discovery is blocked by the network, use ShareM's QR pairing. Manual IP entry is not part of the Android interface.
 
-**Caution:** Browser Wi-Fi sharing and Android-to-iOS direct Wi-Fi pairing are not in v0.1. The app does not access public Android Downloads; incoming items currently go to the app documents folder.
+**Caution:** Browser Wi-Fi sharing and Android-to-iOS direct Wi-Fi pairing are not in v0.1. On Android 10+, verified incoming files can be copied to public Downloads/ShareM on demand; the app also keeps its private copy until deleted.
 
 ## Project folders
 
@@ -99,6 +108,8 @@ Open ShareM on two devices on the same Wi-Fi or hotspot; keep both apps open. Se
 - lib/src/core/wifi_direct_service.dart: Flutter MethodChannel/EventChannel bridge for Android Wi-Fi P2P
 - lib/src/ui/pairing_page.dart: QR generation/scanning and Wi-Fi Direct peer list
 - native/android/MainActivity.kt: native WifiP2pManager runtime permissions, discovery and connection events
+- native/android/SharedFileBridge.kt: Android share-intent import and MediaStore downloads export
+- lib/src/core/shared_files_inbox.dart: share-intent inbox and disk-backed PlatformFile
 - lib/src/ui: responsive Flutter interface
 - test: unit tests and LAN protocol checks
 - tool/bootstrap.py: native platform scaffolding and permissions
@@ -113,7 +124,7 @@ UDP broadcast on port 43886 announces JSON device data. Each device tries a fixe
 1. Authenticated end-to-end encryption with QR / short authentication string verification (current QR is discovery-only).
 2. Native Wi-Fi Direct and hotspot support on compatible Android devices; iOS-native network discovery.
 3. Resumable encrypted chunk streams, transfer queue and background service.
-4. Phone share-sheet integration and safe file export, desktop packaging.
+4. iOS share-target integration, Android pre-10 Downloads export via SAF, desktop packaging.
 5. Cross-device tests, performance benchmarks, accessibility and signed releases.
 
 Maintained by Mohmed Yahia Almhdi.
