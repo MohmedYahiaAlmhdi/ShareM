@@ -6,6 +6,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 import 'package:crypto/crypto.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:sharem/src/core/transfer_models.dart';
 import 'package:sharem/src/core/lan_transfer_service.dart';
 
 class _RealNetworkTestBinding extends AutomatedTestWidgetsFlutterBinding {
@@ -232,6 +234,36 @@ void main() {
     final folder = Directory(p.join(temp.path, 'ShareM', 'Received'));
     expect(await folder.list().toList(), isEmpty);
     expect(service.history.first.status.name, 'failed');
+  });
+
+  test('damaged saved history never stops LAN receiver', () async {
+    service.dispose();
+    SharedPreferences.setMockInitialValues({
+      'history': '{broken-json',
+    });
+    final recovered = LanTransferService();
+    try {
+      await recovered.start();
+      expect(recovered.running, isTrue);
+      expect(recovered.history, isEmpty);
+    } finally {
+      recovered.dispose();
+    }
+  });
+
+  test('remote peer identity mismatch prevents outgoing transfer', () async {
+    final peerFile = File(p.join(temp.path, 'hello.txt'));
+    await peerFile.writeAsString('important file');
+    final peer = NearbyDevice(
+      id: 'd' * 32, name: 'Other device',
+      host: '127.0.0.1', port: service.port,
+    );
+    await service.sendFiles(peer, [
+      PlatformFile(name: 'hello.txt',
+        size: await peerFile.length(), path: peerFile.path),
+    ]);
+    expect(service.history.first.status, TransferStatus.failed);
+    expect(service.incomingOffer, isNull);
   });
 
 }

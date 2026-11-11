@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:path/path.dart' as p;
 import 'package:share_plus/share_plus.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -326,6 +327,31 @@ class _ShareMHomePageState extends State<ShareMHomePage> {
     }
   }
 
+  /// Forward a verified received file to another ShareM peer without a copy.
+  Future<void> _sendReceivedAgain(File file) async {
+    try {
+      if (!await file.exists()) {
+        if (mounted) _message('الملف غير موجود. حدّث الملفات المستلمة.');
+        return;
+      }
+      final length = await file.length();
+      if (!mounted) return;
+      setState(() {
+        _selectedFiles = [
+          PlatformFile(
+            name: p.basename(file.path),
+            size: length,
+            path: file.path,
+          ),
+        ];
+        _lastAutoPickerPeerCount = service.peers.length;
+      });
+      await _chooseDevice();
+    } catch (error) {
+      if (mounted) _message('تعذّر تجهيز إعادة الإرسال: ' + error.toString());
+    }
+  }
+
   Future<void> _chooseDevice() async {
     if (_showingDevicePicker || !mounted) return;
     _showingDevicePicker = true;
@@ -608,7 +634,8 @@ class _ShareMHomePageState extends State<ShareMHomePage> {
           ),
           const SizedBox(height: 14),
           if (_showReceivedFiles)
-            const ReceivedFilesPage()
+            ReceivedFilesPage(onSendAgain: (file) =>
+              unawaited(_sendReceivedAgain(file)))
           else ...[
           Wrap(spacing: 8, runSpacing: 8, children: [
             ChoiceChip(
