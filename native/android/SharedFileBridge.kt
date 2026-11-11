@@ -110,9 +110,10 @@ class SharedFileBridge(
             try {
                 staging.mkdirs()
                 var totalBytes = 0L
+                val batch = ArrayList<Map<String, Any>>()
                 selected.forEachIndexed { index, uri ->
                     if (uri.scheme != "content") {
-                        enqueue(mapOf("error" to "تعذر قراءة الملف المحدد."))
+                        batch.add(mapOf("error" to "تعذر قراءة الملف المحدد."))
                         return@forEachIndexed
                     }
                     try {
@@ -120,17 +121,21 @@ class SharedFileBridge(
                         totalBytes += (item["size"] as Long)
                         if (totalBytes > 4L * 1024L * 1024L * 1024L) {
                             File(item["path"] as String).delete()
+                            batch.forEach { previous ->
+                                (previous["path"] as? String)?.let { File(it).delete() }
+                            }
                             enqueue(mapOf("error" to
                                 "حجم الملفات المشتركة كبير جدًا. اخترها من داخل ShareM."))
                             return@execute
                         }
-                        enqueue(item)
+                        batch.add(item)
                     } catch (error: Exception) {
-                        enqueue(mapOf("error" to
+                        batch.add(mapOf("error" to
                             "تعذر استيراد أحد الملفات: " +
                             (error.message ?: "تعذر الوصول إلى الملف")))
                     }
                 }
+                enqueueBatch(batch)
             } catch (_: Exception) {
                 enqueue(mapOf("error" to "تعذّر استيراد الملفات المشتركة."))
             }
@@ -200,8 +205,11 @@ class SharedFileBridge(
             else leaf.takeLast(120)
     }
 
-    private fun enqueue(message: Map<String, Any>) {
-        synchronized(lock) { pending.add(message) }
+    private fun enqueue(message: Map<String, Any>) = enqueueBatch(listOf(message))
+
+    private fun enqueueBatch(items: List<Map<String, Any>>) {
+        if (items.isEmpty()) return
+        synchronized(lock) { pending.addAll(items) }
         activity.runOnUiThread { eventSink?.success("ready") }
     }
 
