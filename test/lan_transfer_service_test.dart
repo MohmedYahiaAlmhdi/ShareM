@@ -157,4 +157,81 @@ void main() {
     expect(service.history.first.status.name, 'completed');
   });
 
+  test('remote cancellation rejects wrong secret and stops pending offer',
+      () async {
+    final secret = 'b' * 48;
+    final offerReq = await client.postUrl(Uri.parse(
+      'http://127.0.0.1:' + service.port.toString() + '/v1/offer'));
+    final jsonBody = utf8.encode(jsonEncode({
+      'sender': 'Other device',
+      'cancelToken': secret,
+      'files': [{'name': 'video.mp4', 'size': 100,
+        'sha256': 'c' * 64}],
+    }));
+    offerReq.contentLength = jsonBody.length;
+    offerReq.add(jsonBody);
+    final offerResponse = await offerReq.close();
+    final offer = jsonDecode(await utf8.decoder.bind(offerResponse).join());
+    expect(offerResponse.statusCode, 200);
+    final id = offer['offerId'] as String;
+
+    Future<int> cancel(String value) async {
+      final req = await client.postUrl(Uri.parse(
+        'http://127.0.0.1:' + service.port.toString() +
+        '/v1/cancel/' + id));
+      req.headers.set('X-ShareM-Cancel', value);
+      req.contentLength = 0;
+      final response = await req.close();
+      await response.drain<void>();
+      return response.statusCode;
+    }
+
+    expect(await cancel('d' * 48), 403);
+    expect(service.incomingOffer?.status, 'pending');
+    expect(await cancel(secret), 200);
+    expect(service.incomingOffer, isNull);
+
+    final statusRequest = await client.getUrl(Uri.parse(
+      'http://127.0.0.1:' + service.port.toString() +
+      '/v1/status/' + id));
+    final status = await statusRequest.close();
+    final body = jsonDecode(await utf8.decoder.bind(status).join());
+    expect(body['status'], 'cancelled');
+  });
+
+  test('invalid hashes never leave a received file on disk', () async {
+    final bytes = utf8.encode('file with wrong hash');
+    final offerReq = await client.postUrl(Uri.parse(
+      'http://127.0.0.1:' + service.port.toString() + '/v1/offer'));
+    final payload = utf8.encode(jsonEncode({
+      'sender': 'Computer',
+      'files': [{'name': 'photo.jpg', 'size': bytes.length,
+        'sha256': 'f' * 64}],
+    }));
+    offerReq.contentLength = payload.length;
+    offerReq.add(payload);
+    final offerResp = await offerReq.close();
+    final offer = jsonDecode(await utf8.decoder.bind(offerResp).join());
+    expect(offerResp.statusCode, 200);
+    service.respondToOffer(true);
+    final id = offer['offerId'] as String;
+    final statusReq = await client.getUrl(Uri.parse(
+      'http://127.0.0.1:' + service.port.toString() +
+      '/v1/status/' + id));
+    final status = jsonDecode(await utf8.decoder.bind(
+      await statusReq.close()).join());
+    final upload = await client.postUrl(Uri.parse(
+      'http://127.0.0.1:' + service.port.toString() +
+      '/v1/files/' + id + '/0'));
+    upload.headers.set('X-ShareM-Token', status['token'] as String);
+    upload.contentLength = bytes.length;
+    upload.add(bytes);
+    final response = await upload.close();
+    await response.drain<void>();
+    expect(response.statusCode, 422);
+    final folder = Directory(p.join(temp.path, 'ShareM', 'Received'));
+    expect(await folder.list().toList(), isEmpty);
+    expect(service.history.first.status.name, 'failed');
+  });
+
 }

@@ -46,6 +46,10 @@ class PremiumDashboard extends StatelessWidget {
               _header(context),
               const SizedBox(height: 22),
               _summary(context, large),
+              if (history.any((e) => e.isRunning)) ...[
+                const SizedBox(height: 13),
+                _liveTransfer(context),
+              ],
               const SizedBox(height: 26),
               _heading(context, 'شارك ملفاتك', 'اختر ما تريد إرساله'),
               const SizedBox(height: 13),
@@ -61,6 +65,45 @@ class PremiumDashboard extends StatelessWidget {
       );
     },
   );
+
+  Widget _liveTransfer(BuildContext context) {
+    final running = history.firstWhere((e) => e.isRunning);
+    final waiting = running.status != TransferStatus.transferring;
+    return Material(
+      color: Theme.of(context).colorScheme.surface,
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        key: const Key('active-transfer'),
+        onTap: onHistory,
+        borderRadius: BorderRadius.circular(20),
+        child: Padding(
+          padding: const EdgeInsets.all(15),
+          child: Row(children: [
+            SizedBox(width: 38, height: 38,
+              child: CircularProgressIndicator(
+                value: waiting ? null : running.progress,
+                strokeWidth: 4,
+                color: ShareMTheme.teal)),
+            const SizedBox(width: 13),
+            Expanded(child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(waiting ? 'التحضير أو انتظار الموافقة' : 'جارٍ نقل الملفات',
+                  style: const TextStyle(fontWeight: FontWeight.w800)),
+                const SizedBox(height: 3),
+                Text(running.peerName + ' • ' +
+                    humanSize(running.doneBytes) + ' من ' +
+                    humanSize(running.totalBytes),
+                  maxLines: 1, overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 12,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant)),
+              ],
+            )),
+            const Icon(Icons.chevron_left_rounded),
+          ]),
+        ),
+      ),
+    );
+  }
 
   Widget _header(BuildContext context) => Row(children: [
     Container(
@@ -328,7 +371,7 @@ class PremiumDashboard extends StatelessWidget {
               color: Color(0xFF2794C4)),
             title: Text(peer.name, maxLines: 1,
               overflow: TextOverflow.ellipsis),
-            subtitle: const Text('Wi-Fi Direct • بدون راوتر'),
+            subtitle: const Text('Wi-Fi Direct • يلزم وجود ShareM على الجهاز الآخر'),
             trailing: const Icon(Icons.link_rounded),
             onTap: directBusy || directConnected || onDirectPeer == null ? null :
               () => onDirectPeer!(peer),

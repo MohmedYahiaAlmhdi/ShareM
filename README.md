@@ -2,8 +2,16 @@
 
 **ShareM** is an Arabic-first Flutter peer-to-peer LAN file sharing app with a teal Material 3 interface. It targets Android, iOS, Windows, macOS and Linux.
 
-**Status: 0.5.0 development prototype, not a production-ready alternative to SHAREit/ShareMe.**
+**Status: 0.6.0 development prototype, not a production-ready alternative to SHAREit/ShareMe.**
 The current transport is plain HTTP over local Wi-Fi; **not encrypted**. Use trusted networks only.
+
+## ShareM 0.6.0 transfer reliability update
+
+- Incoming files are streamed to temporary .part files and published only after exact length and SHA-256 validation; corrupt/truncated/cancelled files are automatically removed
+- Receiver and sender can cancel active transfers; new peers use a per-offer cancellation secret and bind cancellation to the original sender address
+- Transfer history filters (all/sent/received), in-progress summary, approximate transfer rate and remaining time
+- Wi-Fi Direct rescans while the foreground connection session is available; on Android a foreground multicast lock improves LAN peer discovery on supported devices
+- Existing 0.5.0 Android app identifier and signing identity must be preserved when distributing the 0.6.0 update
 
 ## New ShareM 0.4.0 interface
 
@@ -17,7 +25,7 @@ The current transport is plain HTTP over local Wi-Fi; **not encrypted**. Use tru
 
 - Responsive Arabic RTL dashboard, device browser, history and settings
 - UDP broadcast device discovery (when local network allows it)
-- Manual receiver connection by IP address and port
+- Automatic LAN and Android Wi-Fi Direct discovery; QR fallback (IP is not required in the user interface)
 - **QR pairing:** display device QR, scan with Android/iOS/macOS camera, and verify the encoded device ID against the actual HTTP peer
 - **Android Wi-Fi Direct:** native peer discovery, runtime permission request, negotiation, and client connection to the group owner's ShareM TCP endpoint on port 43887
 - Receiver approval before accepting incoming files

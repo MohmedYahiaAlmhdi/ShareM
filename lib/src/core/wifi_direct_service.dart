@@ -17,6 +17,8 @@ class WifiDirectService extends ChangeNotifier {
 
   final peers = <WifiDirectPeer>[];
   StreamSubscription<dynamic>? _subscription;
+  Timer? _rescanTimer;
+  bool _permissionGranted = false;
 
   bool available = false;
   bool enabled = false;
@@ -68,6 +70,13 @@ class WifiDirectService extends ChangeNotifier {
       final permission = await _methods.invokeMethod<bool>('requestPermission');
       if (permission != true) throw StateError('يرجى منح ShareM إذن الأجهزة القريبة في إعدادات Android.');
       await _methods.invokeMethod<void>('discover');
+      _permissionGranted = true;
+      _rescanTimer ??= Timer.periodic(const Duration(seconds: 45), (_) {
+        if (!_disposed && enabled && !connected && !busy &&
+            _permissionGranted) {
+          unawaited(discover());
+        }
+      });
     } catch (e) {
       error = _describeError(e);
     } finally {
@@ -154,6 +163,7 @@ class WifiDirectService extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     _subscription?.cancel();
+    _rescanTimer?.cancel();
     super.dispose();
   }
 }

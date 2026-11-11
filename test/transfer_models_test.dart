@@ -33,6 +33,40 @@ void main() {
     expect(TransferEntry.fromJson(entry.toJson()).peerName, 'Laptop');
   });
 
+
+  test('remote cancellation requires the sender address and secret', () {
+    final offer = IncomingOffer(
+      id: 'offer', peerName: 'Phone', sourceIp: '192.168.49.2',
+      files: [], cancelToken: 'a' * 48,
+    );
+    expect(canCancelOffer(offer, '192.168.49.2', 'a' * 48), isTrue);
+    expect(canCancelOffer(offer, '192.168.49.3', 'a' * 48), isFalse);
+    expect(canCancelOffer(offer, '192.168.49.2', 'b' * 48), isFalse);
+    expect(canCancelOffer(offer, '192.168.49.2', null), isFalse);
+    final legacy = IncomingOffer(
+      id: 'old', peerName: 'Phone', sourceIp: '192.168.49.2',
+      files: [],
+    );
+    expect(canCancelOffer(legacy, '192.168.49.2', null), isFalse);
+  });
+
+  test('transfer speed and ETA use completed bytes', () {
+    final entry = TransferEntry(
+      id: 'id', peerName: 'Phone', files: ['movie.mp4'],
+      direction: TransferDirection.incoming,
+      status: TransferStatus.transferring,
+      totalBytes: 20 * 1024 * 1024,
+      doneBytes: 10 * 1024 * 1024,
+      transferStartedAt: DateTime.now().subtract(
+        const Duration(seconds: 10)),
+    );
+    expect(entry.bytesPerSecond, greaterThan(900000));
+    expect(entry.secondsRemaining, inInclusiveRange(9, 12));
+    entry.status = TransferStatus.completed;
+    expect(entry.bytesPerSecond, 0);
+    expect(entry.secondsRemaining, isNull);
+  });
+
   test('random identifiers are different', () {
     expect(randomHex(24), isNot(randomHex(24)));
   });

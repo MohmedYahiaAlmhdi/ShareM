@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.location.LocationManager
+import android.net.wifi.WifiManager
 import android.net.wifi.p2p.WifiP2pConfig
 import android.net.wifi.p2p.WifiP2pDevice
 import android.net.wifi.p2p.WifiP2pManager
@@ -31,6 +32,7 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : FlutterActivity(), MethodChannel.MethodCallHandler,
     EventChannel.StreamHandler {
 
+    private var multicastLock: WifiManager.MulticastLock? = null
     private var manager: WifiP2pManager? = null
     private var channel: WifiP2pManager.Channel? = null
     private var sink: EventChannel.EventSink? = null
@@ -58,6 +60,31 @@ class MainActivity : FlutterActivity(), MethodChannel.MethodCallHandler,
                 WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION -> updateConnection()
             }
         }
+    }
+
+    // Keep local discovery packets visible to the app while in foreground.
+    // The lock is released when the activity is paused to save battery.
+    override fun onResume() {
+        super.onResume()
+        try {
+            if (multicastLock == null) {
+                val wifi = applicationContext.getSystemService(
+                    Context.WIFI_SERVICE
+                ) as? WifiManager
+                multicastLock = wifi?.createMulticastLock("ShareM-discovery")
+                    ?.apply { setReferenceCounted(false) }
+            }
+            if (multicastLock?.isHeld == false) multicastLock?.acquire()
+        } catch (_: SecurityException) {
+            // LAN multicast may be restricted; Wi-Fi Direct remains available.
+        }
+    }
+
+    override fun onPause() {
+        try {
+            if (multicastLock?.isHeld == true) multicastLock?.release()
+        } catch (_: RuntimeException) {}
+        super.onPause()
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
