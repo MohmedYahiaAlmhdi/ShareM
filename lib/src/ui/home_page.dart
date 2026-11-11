@@ -7,6 +7,7 @@ import '../core/lan_transfer_service.dart';
 import '../core/transfer_models.dart';
 import '../core/wifi_direct_service.dart';
 import '../core/update_service.dart';
+import '../core/shared_files_inbox.dart';
 import 'update_card.dart';
 import 'pairing_page.dart';
 import 'sharem_theme.dart';
@@ -26,6 +27,7 @@ class _ShareMHomePageState extends State<ShareMHomePage> {
   String? _shownOffer;
   final WifiDirectService wifiDirect = WifiDirectService();
   final UpdateService updates = UpdateService();
+  final SharedFilesInbox sharedFiles = SharedFilesInbox();
   String? _connectedDirectIp;
   List<PlatformFile> _selectedFiles = [];
   bool _showingDevicePicker = false;
@@ -41,6 +43,8 @@ class _ShareMHomePageState extends State<ShareMHomePage> {
     super.initState();
     service.addListener(_onChange);
     wifiDirect.addListener(_onDirectChange);
+    sharedFiles.addListener(_onSharedFiles);
+    unawaited(sharedFiles.initialize());
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(_initializeNetworking());
       unawaited(updates.check());
@@ -53,9 +57,39 @@ class _ShareMHomePageState extends State<ShareMHomePage> {
     wifiDirect.removeListener(_onDirectChange);
     wifiDirect.dispose();
     updates.dispose();
+    sharedFiles.removeListener(_onSharedFiles);
+    sharedFiles.dispose();
     super.dispose();
   }
 
+
+  /// Called when another Android app shares files to ShareM. Reuse the same
+  /// device radar and consent workflow as the regular Send button.
+  void _onSharedFiles() {
+    if (!mounted) return;
+    final message = sharedFiles.error;
+    if (message != null) {
+      sharedFiles.error = null;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _message(message);
+      });
+    }
+    final newlyShared = sharedFiles.takeNewFiles();
+    if (newlyShared.isEmpty) return;
+    setState(() {
+      _selectedFiles = [
+        ..._selectedFiles,
+        ...newlyShared,
+      ].take(100).toList();
+      _lastAutoPickerPeerCount = service.peers.length;
+      _page = 0;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && !_showingDevicePicker) {
+        unawaited(_chooseDevice());
+      }
+    });
+  }
 
   Future<void> _initializeNetworking() async {
     try {
@@ -749,7 +783,7 @@ class _ShareMHomePageState extends State<ShareMHomePage> {
         ShareMTheme.teal),
       const SizedBox(height: 15),
       const SizedBox(height: 20),
-      const Text('ShareM • إصدار تجريبي 0.6.0',
+      const Text('ShareM • إصدار تجريبي 0.7.0',
         textAlign: TextAlign.center,
         style: TextStyle(fontSize: 12, color: Colors.grey)),
     ]),

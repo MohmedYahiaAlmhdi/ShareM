@@ -49,6 +49,24 @@ if not any(element.attrib.get(f"{{{ns}}}name") == "android.hardware.wifi.direct"
 
 application = root.find("application")
 if application is not None:
+    # Allow "Share with ShareM" from Android's native Sharesheet.
+    # Do not use a broad file permission; ACTION_SEND grants per-URI access.
+    activity = application.find("activity")
+    if activity is not None:
+        activity.set(f"{{{ns}}}launchMode", "singleTop")
+        for action_name in ("SEND", "SEND_MULTIPLE"):
+            action = "android.intent.action." + action_name
+            if any(any(a.attrib.get(f"{{{ns}}}name") == action
+                       for a in intent.findall("action"))
+                   for intent in activity.findall("intent-filter")):
+                continue
+            intent_filter = ET.SubElement(activity, "intent-filter")
+            action_tag = ET.SubElement(intent_filter, "action")
+            action_tag.set(f"{{{ns}}}name", action)
+            category = ET.SubElement(intent_filter, "category")
+            category.set(f"{{{ns}}}name", "android.intent.category.DEFAULT")
+            data = ET.SubElement(intent_filter, "data")
+            data.set(f"{{{ns}}}mimeType", "*/*")
     application.set(f"{{{ns}}}usesCleartextTraffic", "true")
     application.set(f"{{{ns}}}label", "ShareM")
     if not any(item.attrib.get(f"{{{ns}}}authorities") ==
@@ -67,6 +85,9 @@ native_source = ROOT / "native/android/MainActivity.kt"
 native_target = ROOT / "android/app/src/main/kotlin/com/yahia/sharem/MainActivity.kt"
 native_target.parent.mkdir(parents=True, exist_ok=True)
 shutil.copy2(native_source, native_target)
+shared_bridge = ROOT / "native/android/SharedFileBridge.kt"
+if shared_bridge.exists():
+    shutil.copy2(shared_bridge, native_target.parent / "SharedFileBridge.kt")
 update_paths = ROOT / "android/app/src/main/res/xml/sharem_file_paths.xml"
 update_paths.parent.mkdir(parents=True, exist_ok=True)
 update_paths.write_text(
