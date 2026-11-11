@@ -8,6 +8,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'transfer_models.dart';
+import 'device_identity.dart';
 import 'verified_file_writer.dart';
 
 /// Direct LAN file transfer. HTTP transport is NOT encrypted in v0.1.
@@ -15,7 +16,7 @@ class LanTransferService extends ChangeNotifier {
   static const discoveryPort = 43886;
   /// Predictable owner endpoint for Android Wi-Fi Direct group clients.
   static const transferPort = 43887;
-  final deviceId = randomHex();
+  String deviceId = randomHex();
   final peers = <NearbyDevice>[];
   final history = <TransferEntry>[];
   final _offers = <String, IncomingOffer>{};
@@ -50,13 +51,23 @@ class LanTransferService extends ChangeNotifier {
     if (running) return;
     try {
       final prefs = await SharedPreferences.getInstance();
+      deviceId = await DeviceIdentity.loadOrCreate(prefs);
       deviceName = prefs.getString('device_name') ?? 'ShareM ' + Platform.operatingSystem;
       final data = prefs.getString('history');
       if (data != null) {
-        for (final row in (jsonDecode(data) as List).whereType<Map>()) {
-          final item = TransferEntry.fromJson(Map<String, dynamic>.from(row));
-          if (item.isRunning) item.status = TransferStatus.failed;
-          history.add(item);
+        try {
+          final decoded = jsonDecode(data);
+          if (decoded is List) {
+            for (final row in decoded.whereType<Map>().take(50)) {
+              final item = TransferEntry.fromJson(
+                Map<String, dynamic>.from(row));
+              if (item.isRunning) item.status = TransferStatus.failed;
+              history.add(item);
+            }
+          }
+        } catch (_) {
+          // Damaged history must never prevent the receiver from starting.
+          history.clear();
         }
       }
       await refreshLocalAddress();
@@ -84,6 +95,8 @@ class LanTransferService extends ChangeNotifier {
               if (json is! Map || json['app'] != 'ShareM' || json['v'] != 1 ||
                   json['id'] == deviceId || json['id'] is! String ||
                   json['name'] is! String || json['port'] is! int) continue;
+              if (!DeviceIdentity.isValid(json['id'] as String) ||
+                  (json['name'] as String).trim().isEmpty) continue;
               final discoveredPort = json['port'] as int;
               if (discoveredPort < 1 || discoveredPort > 65535) continue;
               final name = json['name'] as String;
@@ -175,6 +188,28 @@ class LanTransferService extends ChangeNotifier {
   HttpClient _client() => HttpClient()
     ..connectionTimeout = const Duration(seconds: 10)
     ..idleTimeout = const Duration(seconds: 30);
+
+  /// Verify that a discovered endpoint still advertises the expected ShareM
+  /// device identifier before reading and uploading user-selected files.
+  /// This prevents stale radar entries and accidental wrong-device transfers.
+  /// It is NOT cryptographic peer authentication.
+  Future<void> _verifyPeer(HttpClient client, NearbyDevice peer) async {
+    if (peer.id == deviceId) {
+      throw StateError('لا يمكن إرسال الملفات إلى الجهاز نفسه.');
+    }
+    final helloUri = Uri(
+      scheme: 'http', host: peer.host, port: peer.port, path: '/v1/hello');
+    final request = await client.getUrl(helloUri)
+      .timeout(const Duration(seconds: 6));
+    final response = await request.close()
+      .timeout(const Duration(seconds: 8));
+    final data = await _decode(response);
+    if (data['app'] != 'ShareM' || data['v'] != 1 ||
+        data['id'] != peer.id) {
+      throw StateError(
+        'تغير الجهاز المستقبِل أو أصبح غير متاح. أعد البحث عنه من الرادار.');
+    }
+  }
 
   Future<void> addManualPeer(String hostAndPort, {String? expectedId}) async {
     final uri = Uri.tryParse('http://' + hostAndPort.trim());
@@ -275,6 +310,8 @@ class LanTransferService extends ChangeNotifier {
     final client = _client();
     try {
       if (files.length > 100) throw StateError('Maximum 100 files');
+      await _verifyPeer(client, peer);
+      _check(entry);
       final manifest = <FileManifest>[];
       for (final file in files) {
         _check(entry);
