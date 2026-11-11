@@ -6,7 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 import 'package:crypto/crypto.dart';
-import 'package:file_picker/file_picker.dart';
+import 'package:sharem/src/core/shared_files_inbox.dart';
 import 'package:sharem/src/core/transfer_models.dart';
 import 'package:sharem/src/core/lan_transfer_service.dart';
 
@@ -258,8 +258,8 @@ void main() {
       host: '127.0.0.1', port: service.port,
     );
     await service.sendFiles(peer, [
-      PlatformFile(name: 'hello.txt',
-        size: await peerFile.length(), path: peerFile.path),
+      LocalSharedPlatformFile(name: 'hello.txt',
+        byteLength: await peerFile.length(), path: peerFile.path),
     ]);
     expect(service.history.first.status, TransferStatus.failed);
     expect(service.incomingOffer, isNull);

@@ -338,9 +338,9 @@ class _ShareMHomePageState extends State<ShareMHomePage> {
       if (!mounted) return;
       setState(() {
         _selectedFiles = [
-          PlatformFile(
+          LocalSharedPlatformFile(
             name: p.basename(file.path),
-            size: length,
+            byteLength: length,
             path: file.path,
           ),
         ];
