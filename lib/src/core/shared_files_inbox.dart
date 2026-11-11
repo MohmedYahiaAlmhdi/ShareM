@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
@@ -9,7 +8,7 @@ import 'package:share_plus/share_plus.dart';
 
 /// A disk-backed file delivered by Android Sharesheet. Does not load its bytes
 /// into RAM; it streams through the same transport as a picked file.
-class LocalSharedPlatformFile extends PlatformFile {
+final class LocalSharedPlatformFile extends PlatformFile {
   LocalSharedPlatformFile({
     required this.name,
     required this.path,
